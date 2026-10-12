@@ -1,0 +1,26 @@
+# 💤 بیدار نگه‌داشتن Space (جلوگیری از خواب ۴۸ ساعته)
+# سکرت لازم در گیت‌هاب: SPACE_URL   (مثال: https://user-rahyab.hf.space)
+
+name: نگهبان اسپیس
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: پینگ اسپیس
+        run: |
+          U="${{ secrets.SPACE_URL }}"
+          if [ -z "$U" ]; then echo "ℹ SPACE_URL ست نشده — رد شد"; exit 0; fi
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -m 60 "$U/ping" || echo 000)
+            echo "پینگ $i → $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 20
+          done
+          echo "⚠ اسپیس جواب نداد (ممکن است در حال بیدارشدن باشد)"

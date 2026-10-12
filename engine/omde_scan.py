@@ -61,6 +61,7 @@ def main():
     ap.add_argument("--hours", type=float, default=24)
     ap.add_argument("--channels", nargs="*", default=None)
     ap.add_argument("--csv", default=os.path.join(OUT, "omde_live.csv"))
+    ap.add_argument("--send", action="store_true", help="ارسال خلاصه به تلگرام")
     a = ap.parse_args()
     chans = a.channels or list(CHANNELS.keys())
     all_rows = []
@@ -82,6 +83,19 @@ def main():
             r = dict(r); r["phones"] = " | ".join(r["phones"]); r["prices"] = " | ".join(r["prices"])
             w.writerow(r)
     print(f"\n✅ {len(all_rows)} پست زنده → {a.csv}")
+    if a.send and all_rows:
+        try:
+            sys.path.insert(0, HERE); import notify_multi as nm
+            top = all_rows[:10]
+            lines = ["🔎 <b>پست‌های زنده‌ی عمده‌فروشی</b>"]
+            for r in top:
+                txt = re.sub(r"\s+", " ", r["text"])[:90]
+                ph = r["phones"][0] if r["phones"] else "—"
+                lines.append(f"• [{r['region']}] {txt} ☎{ph}")
+            nm.send_telegram("\n".join(lines))
+            print("📨 خلاصه به تلگرام رفت")
+        except Exception as e:
+            print("⚠ ارسال telگرام نشد:", type(e).__name__)
 
 if __name__ == "__main__":
     main()

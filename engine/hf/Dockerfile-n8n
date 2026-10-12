@@ -1,0 +1,7 @@
+# 🧩 نسخه‌ی دوم (اختیاری): خودِ n8n روی Hugging Face Space رایگان
+# توجه: بدون دیتابیس بیرونی، ورک‌فلوها بعد از هر بازسازی (rebuild) پاک می‌شوند.
+# برای ماندگاری: متغیرهای DB_POSTGRESDB_* را به یک Postgres رایگان (مثلاً Supabase) وصل کن.
+FROM n8nio/n8n:latest
+ENV N8N_PORT=7860 N8N_LISTEN_ADDRESS=0.0.0.0 TZ=Asia/Tehran GENERIC_TIMEZONE=Asia/Tehran N8N_SECURE_COOKIE=false
+EXPOSE 7860
+CMD ["n8n", "start"]
