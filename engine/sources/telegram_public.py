@@ -31,6 +31,16 @@ CHANNELS = {
     "MadanBazar":     "بازار معدن و مواد معدنی",
     # فولاد و آهن
     "fouladban":      "فولادبان — اخبار فولاد",
+    # --- کانال‌های «دیوار» فارسی (تست‌شده ۱۴۰۵/۰۷/۲۰) ---
+    "divar_com":          "نیازمندی‌های دیوار (ملی)",
+    "divarmarivanian":    "دیوار مریوان (فروشنده پرشماره)",
+    "agahy_mashhad":      "دیوار مشهد و حومه",
+    "NiazmandihaDivareTehran": "دیوار تهران (املاک/خدمات)",
+    # --- ایرانیان خارج از کشور ---
+    "hollandad":          "نیازمندی‌های فارسی‌زبانان هلند",
+    "walcad":             "دیوار ایرانیان ونکوور",
+    "America_Canada":     "آمریکا کانادا (تقاضا-محور)",
+    "iranihaistanbul2":   "خانه ایرانیان استانبول",
 }
 FA = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36"
