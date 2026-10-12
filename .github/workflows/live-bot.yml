@@ -1,0 +1,37 @@
+# ⚡ ربات زنده ۲۴/۷ روی GitHub Actions (بدون سرور، بدون کارت)
+# هر اجرا ~۵ ساعت و ۴۰ دقیقه به تلگرام وصل می‌ماند و بعد خودش اجرای بعدی را می‌سازد.
+# جواب فرمان‌ها: چند ثانیه. سکرت‌ها: TELEGRAM_BOT_TOKEN · TELEGRAM_CHAT_ID · GH_PAT
+
+name: ربات زنده
+
+on:
+  schedule:
+    - cron: "5 */6 * * *"      # تور نجات هر ۶ ساعت (اگر زنجیر پاره شد)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: live-bot
+  cancel-in-progress: false
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: حلقه‌ی زنده
+        working-directory: engine
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_PAT:             ${{ secrets.GH_PAT }}
+          GH_REPO:            alirezaah1978-ux/lead-hunter
+          LOOP_SECONDS:       "20400"
+        run: python3 tg_live_loop.py
