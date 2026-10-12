@@ -1,0 +1,65 @@
+# 📣 انتشار کانال «نبض بازار عمده» — ۳ پست در روز
+# ۰۹:۰۰ کارت قیمت | ۱۳:۳۰ فرصت‌ها | ۲۰:۰۰ درس دلالی (به وقت تهران)
+# سکرت‌های لازم: TELEGRAM_BOT_TOKEN · TELEGRAM_CHAT_ID (نسخه‌ی مالک) · KANAL_CHAT_ID (خود کانال)
+
+name: انتشار کانال
+
+on:
+  schedule:
+    - cron: "30 5 * * *"      # ۰۹:۰۰ تهران — کارت قیمت
+    - cron: "0 10 * * *"      # ۱۳:۳۰ تهران — فرصت‌ها
+    - cron: "30 16 * * *"     # ۲۰:۰۰ تهران — درس دلالی
+  workflow_dispatch:
+    inputs:
+      type:
+        description: "نوع محتوا: price | opps | insight | tg_price"
+        default: "price"
+
+concurrency:
+  group: channel-posts
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: نصب وابستگی‌ها
+        run: pip install -q -r engine/requirements.txt
+
+      - name: به‌روزرسانی داده‌ی بازار
+        working-directory: engine
+        env:
+          RELAY_BASE: ${{ secrets.RELAY_BASE }}
+        run: python3 real_pipeline.py --with-telegram || echo "⚠ با داده‌ی قبلی ادامه می‌دهیم"
+
+      - name: کارت قیمت صبح
+        if: github.event.schedule == '30 5 * * *' || inputs.type == 'price'
+        working-directory: engine
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          KANAL_CHAT_ID:      ${{ secrets.KANAL_CHAT_ID }}
+        run: python3 content_post.py --type price
+
+      - name: فرصت‌های ظهر
+        if: github.event.schedule == '0 10 * * *' || inputs.type == 'opps'
+        working-directory: engine
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          KANAL_CHAT_ID:      ${{ secrets.KANAL_CHAT_ID }}
+        run: python3 content_post.py --type opps
+
+      - name: درس دلالی شب
+        if: github.event.schedule == '30 16 * * *' || inputs.type == 'insight'
+        working-directory: engine
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          KANAL_CHAT_ID:      ${{ secrets.KANAL_CHAT_ID }}
+        run: python3 content_post.py --type insight

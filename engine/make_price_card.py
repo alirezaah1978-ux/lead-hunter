@@ -19,6 +19,8 @@ if not HAS_RAQM:                       # فقط در صورت نبود raqm لا
     import arabic_reshaper
     from bidi.algorithm import get_display
 
+UNIT = {"autoparts": "عدد"}
+
 def T(t):
     return str(t) if HAS_RAQM else get_display(arabic_reshaper.reshape(str(t)))
 
@@ -66,7 +68,7 @@ def build(report_path=None, title="قیمت روز بازار", subtitle=None, n
     d.rectangle([0, 208, W, 212], fill=ACCENT)
     RTL(d, (W-56, 44), title, f_title, TEXT)
     RTL(d, (W-56, 118), subtitle or f"به‌روزرسانی خودکار • {num(stats['unique'])} آگهی بررسی‌شده • {num(stats['pairs'])} فرصت شناسایی‌شده", f_sub, ACCENT)
-    LTR(d, (56, 118), "● live", f_sub, ACCENT, anchor="la")
+    RTL(d, (W-56, 118), "● زنده", f_sub, ACCENT)
 
     y = 250
     # ---------- بخش ۱: تصویر بازار ----------
@@ -77,7 +79,8 @@ def build(report_path=None, title="قیمت روز بازار", subtitle=None, n
         RTL(d, (W-86, y+18), v["fa"], f_name, TEXT)
         RTL(d, (W-86, y+68), f"{num(v['sellers'])} عرضه • {num(v['buyers'])} تقاضا", f_small, SUB)
         LTR(d, (100, y+22), num(v["median"]), f_price, ACCENT, anchor="la")
-        RTL(d, (330, y+78), "تومان بر کیلو (میانه)", f_tiny, SUB, anchor="la")
+        unit = "عدد" if "یدکی" in v.get("fa", "") else "کیلو"
+        RTL(d, (330, y+78), f"تومان بر {unit} (میانه)", f_tiny, SUB, anchor="la")
         y += 142
 
     # ---------- بخش ۲: فرصت‌ها ----------
@@ -98,7 +101,7 @@ def build(report_path=None, title="قیمت روز بازار", subtitle=None, n
     # ---------- فوتر ----------
     d.rectangle([0, H-116, W, H], fill=(15, 27, 43))
     RTL(d, (W-56, H-86), footer, f_tiny, SUB)
-    LTR(d, (56, H-86), "auto-generated", f_tiny, ACCENT, anchor="la")
+    RTL(d, (W-56, H-86), "تولید خودکار رهیاب", f_tiny, ACCENT)
 
     path = os.path.join(OUT, "price_card.png")
     img.save(path, "PNG", optimize=True)

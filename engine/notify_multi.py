@@ -190,6 +190,14 @@ PHOTO_SENDERS = {
     "telegram": photo_telegram, "bale": photo_bale, "eitaa": photo_eitaa, "rubika": photo_rubika,
 }
 
+def publish_channel(text, path=None):
+    """ارسال به کانال (اگر KANAL_CHAT_ID تنظیم شده باشد)"""
+    ch = os.environ.get("KANAL_CHAT_ID", "")
+    if not ch: return {}
+    if path and os.path.exists(path):
+        return {"channel": photo_telegram(path, text, chat_id=ch)}
+    return {"channel": send_telegram(text, chat_id=ch)}
+
 def broadcast_photo(path, caption, only=None, dry=False, fallback_text=True):
     """تصویر + کپشن به همه‌ی پلتفرم‌های تنظیم‌شده. اگر ارسال تصویر نشد، متن می‌فرستد."""
     targets = only or configured()

@@ -42,9 +42,10 @@ def caption_price(D):
     s, P, I = D["stats"], D["pairs"], D["intel"]
     L = ["📊 <b>قیمت روز بازار</b>", ""]
     for v in I.values():
-        L.append(f"• <b>{v['fa']}</b>: {n(v['median'])} تومان/کیلو  ({n(v['sellers'])} عرضه / {n(v['buyers'])} تقاضا)")
+        unit = "عدد" if v.get("key") == "autoparts" or "یدکی" in v.get("fa", "") else "کیلو"
+        L.append(f"• <b>{v['fa']}</b>: {n(v['median'])} تومان/{unit}  ({n(v['sellers'])} عرضه / {n(v['buyers'])} تقاضا)")
     L += ["", f"🔎 در {n(s['unique'])} آگهی بررسی‌شده، {n(s['pairs'])} فرصت معاملاتی شناسایی شد.", "",
-          "📌 نرخ‌ها میانه‌ی آگهی‌های عمومی امروز است، نرمال‌شده به تومان بر کیلو."]
+          "📌 میانه‌ی آگهی‌های عمومی امروز — پسته/فولاد/ضایعات: تومان بر کیلو · لوازم یدکی: تومان بر عدد."]
     return "\n".join(L)
 
 def caption_opps(D):
@@ -106,6 +107,12 @@ def caption_insight(D):
 # ---------- ۲ و ۴: ساخت و انتشار ----------
 def publish(kind="price", dry=False, relay_url="", relay_secret="", force=False):
     D = json.load(open(REPORT, encoding="utf-8"))
+    # اگر chat_id کانال در پنل کنترل ثبت شده، خودکار به کانال هم می‌رود
+    try:
+        import settings as _st
+        kch = _st.get("content_kanal", "chat_id", "") or _st.get("content_kanal", "کانال", "")
+        if kch and not os.environ.get("KANAL_CHAT_ID"): os.environ["KANAL_CHAT_ID"] = str(kch)
+    except Exception: pass
     st = load_state()
     card_path, text = None, ""
 
@@ -139,6 +146,9 @@ def publish(kind="price", dry=False, relay_url="", relay_secret="", force=False)
     else:
         broadcast(text, dry=dry)
 
+    if not dry:
+        ch = nm.publish_channel(text, card_path)
+        if ch: print("   کانال:", ch)
     st[kind] = payload_key
     save_state(st)
     return True
