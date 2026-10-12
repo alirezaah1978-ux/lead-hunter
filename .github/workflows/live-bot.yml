@@ -26,6 +26,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: نصب وابستگی‌ها
+        run: pip install -q requests beautifulsoup4 pillow 2>/dev/null || pip install -q requests 2>/dev/null || true
+
       - name: حلقه‌ی زنده
         working-directory: engine
         env:

@@ -5,7 +5,7 @@
 
 فرمان‌های فارسی: راهنما | وضعیت | رادار | قیمت | فرصت | اسکن | پست
 """
-import json, os, subprocess, sys, urllib.parse, urllib.request
+import json, os, re, subprocess, sys, urllib.parse, urllib.request
 from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -33,8 +33,16 @@ def api(method, **params):
         return json.load(r)
 
 def send(text):
-    api("sendMessage", chat_id=CHAT, text=text[:3900], parse_mode="HTML",
-        disable_web_page_preview="true")
+    text = str(text)[:3900]
+    try:
+        api("sendMessage", chat_id=CHAT, text=text, parse_mode="HTML",
+            disable_web_page_preview="true")
+    except Exception:
+        try:
+            clean = re.sub(r"<[^>]*>", " ", text)
+            api("sendMessage", chat_id=CHAT, text=clean[:3900], disable_web_page_preview="true")
+        except Exception as e:
+            print("send failed:", type(e).__name__)
 
 def sh(args):
     try:
