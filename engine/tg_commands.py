@@ -83,6 +83,32 @@ def handle(cmd):
     else:
         send("🤔 نشناختم. بنویس «راهنما».")
 
+
+def ensure_live_bot():
+    """اگر «ربات زنده» خاموش شده باشد، دوباره روشنش می‌کند (خوددرمانی)."""
+    pat = os.environ.get("GH_PAT", "").strip()
+    repo = os.environ.get("GH_REPO", "alirezaah1978-ux/lead-hunter")
+    if not pat: return
+    H = {"Authorization": f"token {pat}", "Accept": "application/vnd.github+json",
+         "User-Agent": "rahyaab"}
+    try:
+        req = urllib.request.Request(
+            f"https://api.github.com/repos/{repo}/actions/workflows/live-bot.yml/runs?per_page=5",
+            headers=H)
+        with urllib.request.urlopen(req, timeout=25) as r:
+            runs = json.load(r).get("workflow_runs", [])
+        if any(x.get("status") in ("in_progress", "queued", "pending") for x in runs):
+            print("✅ ربات زنده فعال است")
+            return
+        req = urllib.request.Request(
+            f"https://api.github.com/repos/{repo}/actions/workflows/live-bot.yml/dispatches",
+            data=json.dumps({"ref": "main"}).encode(),
+            headers={**H, "Content-Type": "application/json"}, method="POST")
+        urllib.request.urlopen(req, timeout=25)
+        print("🔁 نگهبان: ربات زنده دوباره روشن شد")
+    except Exception as e:
+        print("watchdog:", type(e).__name__)
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     seen = {"last_id": 0}
@@ -101,6 +127,13 @@ def main():
         if txt:
             print("⌘", txt); handle(txt); n += 1
     json.dump(seen, open(SEEN, "w", encoding="utf-8"), ensure_ascii=False)
+    try:
+        hb = os.path.join(OUT, "heartbeat.txt")
+        today = datetime.now().strftime("%Y-%m-%d")
+        if not os.path.exists(hb) or open(hb, encoding="utf-8").read().strip().split()[0] != today:
+            open(hb, "w", encoding="utf-8").write(f"{today} {datetime.now():%H:%M} رهیاب زنده است")
+    except Exception: pass
+    ensure_live_bot()
     print(f"✅ {n} فرمان پردازش شد — {datetime.now():%H:%M}")
 
 if __name__ == "__main__":

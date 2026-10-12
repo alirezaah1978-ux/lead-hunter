@@ -34,14 +34,17 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
           KANAL_CHAT_ID:      ${{ secrets.KANAL_CHAT_ID }}
+          GH_PAT:             ${{ secrets.GH_PAT }}
+          GH_REPO:            alirezaah1978-ux/lead-hunter
         run: python3 tg_commands.py
 
-      - name: ذخیره‌ی نشانگر پیام‌های خوانده‌شده
+      - name: ذخیره‌ی نشانگر + ضربان روزانه
+        if: always()
         run: |
           if [ -f engine/output/tg_seen.json ]; then
             git config user.name "rahyaab-bot"
             git config user.email "bot@users.noreply.github.com"
-            git add engine/output/tg_seen.json
+            git add engine/output/tg_seen.json engine/output/heartbeat.txt
             git diff --staged --quiet || git commit -m "state: tg seen [skip ci]"
             git push || true
           fi
