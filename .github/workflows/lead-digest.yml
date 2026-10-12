@@ -1,0 +1,65 @@
+# 🔄 فرصت‌یاب خودکار — ارسال به تلگرام، بله، روبیکا و ایتا
+#
+# نصب (یک‌بار):
+#   ۱) ریپو در گیت‌هاب بساز و پروژه را push کن
+#   ۲) Settings → Secrets and variables → Actions → این‌ها را اضافه کن:
+#        TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID      (اختیاری)
+#        BALE_BOT_TOKEN     / BALE_CHAT_ID          (اختیاری — بله)
+#        RUBIKA_BOT_TOKEN   / RUBIKA_CHAT_ID        (اختیاری — روبیکا)
+#        EITAA_BOT_TOKEN    / EITAA_CHAT_ID         (اختیاری — ایتا)
+#        RELAY_URL / RELAY_SECRET                   (اختیاری — نود داخل ایران، اگر APIها IP خارجی را مسدود کردند)
+#   ۳) تب Actions → فایل را Enable کن → Run workflow
+#
+# هزینه: رایگان (ریپوی عمومی نامحدود | خصوصی ۲۰۰۰ دقیقه در ماه — این کار ~۳ دقیقه)
+
+name: فرصت‌یاب خودکار
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"      # هر ۶ ساعت UTC — مثلاً برای هر ۳ ساعت: "0 */3 * * *"
+  workflow_dispatch:
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # پایتون استاندارد کافی است — هیچ pip install لازم نیست
+      - name: جمع‌آوری و تطبیق (دیوار + تلگرام ← موتور)
+        run: cd engine && python3 real_pipeline.py --with-telegram
+
+      - name: ارسال به همه‌ی پیام‌رسان‌ها
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          BALE_BOT_TOKEN:     ${{ secrets.BALE_BOT_TOKEN }}
+          BALE_CHAT_ID:       ${{ secrets.BALE_CHAT_ID }}
+          RUBIKA_BOT_TOKEN:   ${{ secrets.RUBIKA_BOT_TOKEN }}
+          RUBIKA_CHAT_ID:     ${{ secrets.RUBIKA_CHAT_ID }}
+          EITAA_BOT_TOKEN:    ${{ secrets.EITAA_BOT_TOKEN }}
+          EITAA_CHAT_ID:      ${{ secrets.EITAA_CHAT_ID }}
+          RELAY_URL:          ${{ secrets.RELAY_URL }}       # اگر خالی باشد، مسیر مستقیم امتحان می‌شود
+          RELAY_SECRET:       ${{ secrets.RELAY_SECRET }}
+        run: |
+          cd engine
+          # اگر نود داخل ایران داری، از آن استفاده کن (مطمئن‌ترین راه برای بله/روبیکا/ایتا)
+          if [ -n "$RELAY_URL" ]; then
+            python3 notify_multi.py --digest --via-relay "$RELAY_URL"
+          else
+            python3 notify_multi.py --digest \
+              || echo "⚠ ارسال مستقیم ناموفق بود — سرورهای ایرانی ممکن است IP گیت‌هاب را مسدود کنند."
+          fi
+
+      - name: نگه‌داشتن خروجی‌ها
+        uses: actions/upload-artifact@v4
+        with:
+          name: leads-${{ github.run_number }}
+          path: |
+            engine/output/real_report.json
+            engine/output/real_opportunities.csv
+          retention-days: 30

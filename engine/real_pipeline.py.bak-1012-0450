@@ -1,0 +1,211 @@
+# -*- coding: utf-8 -*-
+"""
+پایپ‌لاین روی داده‌ی واقعی دیوار:
+  ۱) آگهی‌های زنده را از رله می‌گیرد (کش‌شده، بدون فشار به دیوار)
+  ۲) «سمت تقاضا» را از دل آگهی‌ها استخراج می‌کند (پست‌های خریدار)
+  ۳) قیمت‌ها را به تومان/کیلو نرمال می‌کند و قیمت‌های مشکوک را کنار می‌گذارد
+  ۴) عرضه × تقاضا را تطبیق می‌دهد، فاصله‌ی قیمتی (spread) را حساب می‌کند
+  ۵) گزارش واقعی می‌سازد: فرصت‌ها، اطلاعات بازار، و صف «بررسی انسانی»
+"""
+import json, os, sys, csv, collections
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from sources.divar_relay import crawl, details
+from config import VERTICALS
+from core import clean_listing, dedupe, tokens, norm, product_type, hard_specs, human, fa_num
+
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+os.makedirs(OUT, exist_ok=True)
+CITY_PROV = {"تهران":"تهران","کرمان":"کرمان","اصفهان":"اصفهان","مشهد":"خراسان رضوی","تبریز":"آذربایجان شرقی","شیراز":"فارس"}
+
+# بازه‌ی قیمت معقول هر «نوع کالا» (تومان/کیلو) — بدون این لایه، پارچه با مس مقایسه می‌شود!
+PTYPE_BANDS = {
+ "pistachio": {"اکبری": (800_000, 4_500_000), "احمدآقایی": (700_000, 4_200_000), "کله قوچی": (600_000, 3_600_000),
+               "فندقی": (500_000, 3_200_000), "بادام": (400_000, 2_200_000), "زعفران": (50_000_000, 150_000_000)},
+ "steel": {"میلگرد": (30_000, 85_000), "تیرآهن": (35_000, 95_000), "ورق": (28_000, 95_000), "نبشی": (28_000, 85_000),
+           "قوطی": (28_000, 85_000), "پروفیل": (28_000, 90_000), "لوله": (28_000, 100_000)},
+ "scrap": {"کارتن": (4_000, 22_000), "پلاستیک": (10_000, 65_000), "pet": (12_000, 65_000), "گرانول": (20_000, 85_000),
+           "آهن قراضه": (8_000, 45_000), "مس": (250_000, 950_000), "آلومینیوم": (40_000, 220_000)},
+}
+
+def in_band(price, vertical, ptype):
+    band = PTYPE_BANDS.get(vertical, {}).get(ptype)
+    if not band: return None                      # کالای ناشناخته → بررسی انسانی
+    return band[0] <= price <= band[1]
+
+# ---------- ۱) جمع‌آوری ----------
+WITH_TG = "--with-telegram" in sys.argv          # افزودن کانال‌های عمومی تلگرام به‌عنوان منبع دوم
+use_cache_file = "--offline" in sys.argv
+raw_path = f"{OUT}/divar_real.json"
+if use_cache_file and os.path.exists(raw_path):
+    raw = json.load(open(raw_path, encoding="utf-8"))
+    print(f"📦 داده‌ی ذخیره‌شده: {len(raw)} آگهی")
+else:
+    queries = [q for v in VERTICALS.values() for q in v.get("b2b_queries", [])]
+    raw = crawl(queries, cities=("tehran", "kerman", "isfahan"))
+    json.dump(raw, open(raw_path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    print(f"🏠 زنده از دیوار: {len(raw)} آگهی")
+
+# ---------- ۱.۵) منبع دوم: کانال‌های عمومی تلگرام ----------
+tg_rows, tg_intel = [], []
+if WITH_TG:
+    from sources.telegram_public import crawl as tg_crawl, CHANNELS
+    tg_raw = tg_crawl(pages=1)
+    print(f"📣 تلگرام: {len(tg_raw)} پست از {len(CHANNELS)} کانال")
+    for r in tg_raw:
+        if r.get("kind") == "pricelist" and r.get("price_list"):
+            tg_intel.append({"channel": r["channel"], "title": r["title"], "url": r["url"],
+                             "age_h": r["age_hours"], "phone": (r["phones"] or [""])[0],
+                             "items": r["price_list"][:20]})
+            continue                                  # لیست قیمت = اطلاعات بازار، نه آگهی معامله
+        if not r.get("phones") and not r.get("price"): continue   # بدون تماس و بی‌قیمت = بی‌ارزش برای مذاکره
+        tg_rows.append({
+            "id": r["id"], "token": r["id"], "source": "تلگرام",
+            "title": r["title"], "desc": r["text"], "price": r.get("price"),
+            "qty": None, "age_hours": r.get("age_hours") or 24,
+            "city": "", "province": "", "url": r["url"], "raw": r["text"],
+            "contact": (r["phones"] or [""])[0], "channel": r["channel"],
+            "direction": r.get("direction"),
+        })
+    print(f"   ↳ {len(tg_rows)} آگهی قابل استفاده | {len(tg_intel)} لیست قیمت (اطلاعات بازار)")
+    raw = raw + tg_rows
+
+listings = [clean_listing(r) for r in raw]
+listings = [l for l in listings if l["vertical"]]                     # حذف نامرتبط‌ها
+listings, n_dupes = dedupe(listings)
+print(f"→ {len(listings)} آگهی یکتا در {len(set(l['vertical'] for l in listings))} حوزه (حذف {n_dupes} تکراری)")
+
+# ---------- ۲) استخراج تقاضا از آگهی‌های خریدار ----------
+demands = []
+for l in listings:
+    if not l["is_demand_post"] or l["is_retail"]: continue
+    ptype = l["ptype"] or product_type(l["_text"], l["vertical"])
+    if not ptype: continue
+    demands.append({
+        "id": "D-" + l["token"][:6],
+        "buyer": f"آگهی‌دهنده‌ی خریدار ({l['city']})",
+        "city": l["city"], "province": l.get("province") or CITY_PROV.get(l["city"], ""),
+        "need": l["title"] + " " + (l["desc"] or ""),
+        "keywords": [ptype] + [k for k in VERTICALS[l["vertical"]]["keywords"] if norm(k) in norm(l["_text"])][:3],
+        "qty": l["qty"], "max_price": l["unit_price"],      # قیمت خریدار = سقف خرید او
+        "vertical": l["vertical"], "deadline_days": 14,
+        "verified": False, "note": "استخراج‌شده از آگهی دیوار — نیاز به تماس اعتبارسنجی",
+        "source_token": l["token"], "source_url": l["url"], "raw_post": l,
+        "ptype": ptype, "specs": hard_specs(l["_text"]),
+    })
+print(f"🧭 تقاضای استخراج‌شده از آگهی‌ها: {len(demands)}")
+
+# ---------- ۳ و ۴) تطبیق عرضه × تقاضا با نرمال‌سازی قیمت ----------
+pairs, needs_review = [], []
+for d in demands:
+    for l in listings:
+        if l["vertical"] != d["vertical"]: continue
+        if l["token"] == d["source_token"]: continue          # خودش
+        if l["is_demand_post"]: continue                       # دو خریدار به هم وصل نمی‌شوند
+        if l["is_retail"]: continue                            # خرده‌فروشی هدف ما نیست
+        # محدودیت سخت ۱: نوع کالا باید دقیقاً یکی باشد
+        if d["ptype"] and l["ptype"] and d["ptype"] != l["ptype"]: continue
+        if not l["ptype"]:
+            needs_review.append({"why": "نوع کالا نامشخص", "listing": l["title"], "url": l["url"],
+                                 "city": l["city"], "price_raw": l["price"], "for_buyer": d["buyer"]}); continue
+        if not l["unit_price"]:
+            needs_review.append({"why": l["price_status"], "listing": l["title"], "url": l["url"],
+                                 "city": l["city"], "price_raw": l["price"], "for_buyer": d["buyer"]})
+            continue
+        # محدودیت سخت ۲: هر دو قیمت باید داخل بازه‌ی معقول همان کالا باشند
+        ok_s = in_band(l["unit_price"], l["vertical"], l["ptype"])
+        if ok_s is False:
+            needs_review.append({"why": f"قیمت فروشنده خارج از بازه‌ی «{l['ptype']}»",
+                                 "listing": l["title"], "url": l["url"], "city": l["city"],
+                                 "price_raw": l["price"], "for_buyer": d["buyer"]}); continue
+        if d["max_price"] and in_band(d["max_price"], d["vertical"], d["ptype"]) is False:
+            needs_review.append({"why": f"قیمت خریدار خارج از بازه‌ی «{d['ptype']}»",
+                                 "listing": d["need"][:70], "url": d["source_url"], "city": d["city"],
+                                 "price_raw": d["max_price"], "for_buyer": d["buyer"]}); continue
+        spread = (d["max_price"] or 0) - l["unit_price"]
+        if d["max_price"] and spread <= 0: continue            # گران‌تر از سقف خریدار = بی‌معنی
+        # محدودیت سخت ۳: فاصله‌ی قیمتی غیرمنطقی = احتمالاً دو کالای متفاوت
+        if d["max_price"] and spread / d["max_price"] > 0.45:
+            needs_review.append({"why": f"فاصله‌ی قیمتی {spread/d['max_price']*100:.0f}٪ — احتمال مغایرت کالا",
+                                 "listing": l["title"], "url": l["url"], "city": l["city"],
+                                 "price_raw": l["price"], "for_buyer": d["buyer"]}); continue
+        geo = 1.0 if l["city"] == d["city"] else 0.55
+        fresh = max(0.0, 1 - l["age_hours"] / 240)
+        spread_score = min(1.0, spread / max(1, d["max_price"]) / 0.25) if d["max_price"] else 0.4
+        score = round(0.45 * spread_score + 0.25 * geo + 0.15 * fresh + 0.15, 3)
+        # ارزش‌گذاری: حداقل حجم محتمل (چون مقدار در آگهی‌ها کم ذکر می‌شود)
+        qty = l["qty"] or d["qty"] or 2000                      # فرض محافظه‌کارانه: ۲ تن
+        deal_value = l["unit_price"] * qty
+        cfg = VERTICALS[l["vertical"]]
+        commission = max(deal_value * cfg["fee_rate"], cfg["min_fee"])
+        spread_total = spread * qty                              # سود بالقوه‌ی کل فاصله‌ی قیمتی
+        pairs.append({
+            "score": score, "vertical": l["vertical"], "vertical_fa": cfg["fa"],
+            "buyer": d["buyer"], "buyer_url": d["source_url"], "buyer_note": d["note"],
+            "need": d["need"][:120],
+            "seller_listing": l["title"], "seller_url": l["url"], "seller_city": l["city"],
+            "seller_price": round(l["unit_price"]), "buyer_price": round(d["max_price"]) if d["max_price"] else None,
+            "spread_per_kg": round(spread), "qty_assumed": qty,
+            "deal_value": round(deal_value), "commission": round(commission),
+            "spread_total": round(spread_total), "source": l["source"],
+            "price_note": l["price_status"], "age_h": l["age_hours"],
+        })
+
+pairs.sort(key=lambda p: (p["score"], p["spread_total"]), reverse=True)
+print(f"🎯 جفت‌های عرضه×تقاضای واقعی: {len(pairs)} | نیازمند بررسی انسانی (قیمت مشکوک): {len(needs_review)}")
+
+# ---------- ۵) اطلاعات بازار (market intel) ----------
+intel = {}
+for v in VERTICALS:
+    rows = [l for l in listings if l["vertical"] == v]
+    ps = sorted(l["unit_price"] for l in rows if l["unit_price"])
+    intel[v] = {
+        "fa": VERTICALS[v]["fa"], "count": len(rows),
+        "sellers": sum(1 for l in rows if not l["is_demand_post"]),
+        "buyers": sum(1 for l in rows if l["is_demand_post"]),
+        "priced": len(ps),
+        "median": round(ps[len(ps)//2]) if ps else None,
+        "p10": round(ps[len(ps)//10]) if ps else None,
+        "p90": round(ps[9*len(ps)//10]) if ps else None,
+        "cities": collections.Counter(l["city"] for l in rows).most_common(4),
+    }
+
+report = {"stats": {"raw": len(raw), "unique": len(listings), "dupes": n_dupes,
+                    "demands": len(demands), "pairs": len(pairs), "review": len(needs_review),
+                    "tg_posts": len(tg_rows), "tg_pricelists": len(tg_intel),
+                    "with_phone": sum(1 for l in listings if l.get("contact"))},
+          "intel": intel, "pairs": pairs[:40], "review": needs_review[:25],
+          "telegram_intel": tg_intel}
+json.dump(report, open(f"{OUT}/real_report.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+
+# CSV برای کار عملیاتی
+with open(f"{OUT}/real_opportunities.csv", "w", newline="", encoding="utf-8-sig") as f:
+    w = csv.writer(f)
+    w.writerow(["امتیاز","حوزه","خریدار (آگهی)","لینک خریدار","فروشنده","لینک فروشنده","شهر فروشنده",
+                "قیمت خریدار","قیمت فروشنده","فاصله هر کیلو","ارزش معامله","پورسانت","فاصله کل","وضعیت قیمت","منبع"])
+    for p in pairs[:40]:
+        w.writerow([p["score"], p["vertical_fa"], p["need"], p["buyer_url"], p["seller_listing"],
+                    p["seller_url"], p["seller_city"], p["buyer_price"], p["seller_price"],
+                    p["spread_per_kg"], p["deal_value"], p["commission"], p["spread_total"], p["price_note"],
+                    p["source"]])
+
+# ---------- چاپ ----------
+print("\n" + "="*80)
+print("  اطلاع از بازار واقعی دیوار (نرمال‌شده به تومان/کیلو)")
+print("="*80)
+for v, i in intel.items():
+    print(f"  {i['fa']:<24} {i['count']:>3} آگهی | فروشنده {i['sellers']:>3} | خریدار {i['buyers']:>3} | "
+          f"میانه {human(i['median']) if i['median'] else '—'} | بازه {human(i['p10']) if i['p10'] else '—'}–{human(i['p90']) if i['p90'] else '—'}")
+
+print("\n" + "="*80); print("  برترین فرصت‌های واقعی (عرضه × تقاضا)"); print("="*80)
+for i, p in enumerate(pairs[:10], 1):
+    print(f"{i:>2}. [{p['score']}] {p['vertical_fa']} | فروشنده «{p['seller_listing'][:45]}» "
+          f"@{fa_num(p['seller_price'])} ← خریدار @{fa_num(p['buyer_price']) if p['buyer_price'] else '—'} "
+          f"| فاصله {fa_num(p['spread_per_kg'])} ت/کیلو | پورسانت {human(p['commission'])}")
+
+if tg_intel:
+    print("\n" + "="*80); print("  📋 لیست‌های قیمت از کانال‌های تلگرام (اطلاعات بازار)"); print("="*80)
+    for t in tg_intel[:4]:
+        print(f"  • {t['channel']}: {t['title'][:55]} ({t['age_h']}h پیش) — {len(t['items'])} قلم")
+        for it in t["items"][:3]:
+            print(f"      {it['name'][:30]:32} {it['price']:>12,} {it['mark']}")
+print(f"\n✔ {OUT}/real_report.json\n✔ {OUT}/real_opportunities.csv\n✔ {OUT}/divar_real.json ({len(raw)} آگهی خام)")

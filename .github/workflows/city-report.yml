@@ -1,0 +1,46 @@
+# 🗺 گزارش شهر به شهر — روزی یک‌بار
+# عرضه/تقاضای هر شهر را می‌سنجد و خلاصه را به تلگرام می‌فرستد.
+# رشته‌ی سکرت‌های لازم: TELEGRAM_BOT_TOKEN · TELEGRAM_CHAT_ID (اختیاری: RELAY_BASE)
+
+name: نقشه شهرها
+
+on:
+  schedule:
+    - cron: "30 2 * * *"        # هر روز ۰۶:۰۰ تهران
+  workflow_dispatch:
+
+concurrency:
+  group: city-report
+  cancel-in-progress: false
+
+jobs:
+  city:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: نصب وابستگی‌ها
+        run: pip install -q -r engine/requirements.txt 2>/dev/null || true
+
+      - name: تحلیل شهر به شهر + ارسال خلاصه
+        working-directory: engine
+        env:
+          RELAY_BASE:         ${{ secrets.RELAY_BASE }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python3 city_report.py
+
+      - name: آپلود خروجی‌ها
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: city-report
+          path: |
+            engine/output/city_balance.csv
+            engine/output/city_insight.json
+            engine/output/city_routes.json
+          retention-days: 30

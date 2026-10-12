@@ -1,0 +1,92 @@
+# 📢 انتشار خودکار محتوا در کانال‌ها (کارت قیمت + فرصت‌ها + تحلیل)
+#
+# چه می‌کند:
+#   • هر ساعت: کارت تصویری «قیمت روز» (فقط اگر محتوا تغییر کرده باشد — ضداسپم داخلی)
+#   • ساعت ۸ و ۱۸: «۳ فرصت برتر»
+#   • ساعت ۹: «تحلیل کوتاه بازار»
+#   • ساعت ۱۰: «قیمت از کانال‌های تخصصی تلگرام» (با روند قیمت)
+#
+# نکته: منطق ضدتکرار در content_post.py است (هش محتوا)، پس حتی اگر هر ۱۵ دقیقه اجرا کنی،
+#        فقط وقتی داده واقعاً عوض شده باشد پست می‌شود → کانال اسپم نمی‌شود.
+#
+# پیش‌نیاز: Pillow + arabic-reshaper برای ساخت کارت تصویری (یک بار در ورک‌فلو نصب می‌شود)
+
+name: انتشار محتوا
+
+on:
+  schedule:
+    - cron: "7 * * * *"        # هر ساعت (دقیقه ۷ تا از شلوغی cron فرار کند)
+  workflow_dispatch:
+    inputs:
+      type:
+        description: "نوع محتوا"
+        required: true
+        default: "price"
+        type: choice
+        options: [price, opps, insight, tg_price]
+
+concurrency:
+  group: content-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: نصب پیش‌نیاز تصویر
+        run: pip install --quiet pillow arabic-reshaper python-bidi
+
+      - name: بازیابی حالت (برای ضدتکرار)
+        uses: actions/cache/restore@v4
+        with:
+          path: engine/output/content_state.json
+          key: content-state-${{ github.run_id }}
+          restore-keys: content-state-
+
+      - name: به‌روزرسانی داده (اگر لازم بود)
+        env:
+          RELAY_BASE: ${{ secrets.RELAY_BASE }}
+        run: |
+          cd engine
+          # اگر گزارش امروز وجود ندارد یا قدیمی‌تر از ۳ ساعت است، تازه بگیر
+          if [ ! -f output/real_report.json ] || [ $(find output/real_report.json -mmin +180 | wc -l) -gt 0 ]; then
+            python3 real_pipeline.py --with-telegram || echo "⚠ به‌روزرسانی داده ناموفق — با داده‌ی قبلی ادامه می‌دهیم"
+          fi
+
+      - name: انتشار
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          BALE_BOT_TOKEN:     ${{ secrets.BALE_BOT_TOKEN }}
+          BALE_CHAT_ID:       ${{ secrets.BALE_CHAT_ID }}
+          RUBIKA_BOT_TOKEN:   ${{ secrets.RUBIKA_BOT_TOKEN }}
+          RUBIKA_CHAT_ID:     ${{ secrets.RUBIKA_CHAT_ID }}
+          EITAA_BOT_TOKEN:    ${{ secrets.EITAA_BOT_TOKEN }}
+          EITAA_CHAT_ID:      ${{ secrets.EITAA_CHAT_ID }}
+          RELAY_URL:          ${{ secrets.RELAY_URL }}
+          RELAY_SECRET:       ${{ secrets.RELAY_SECRET }}
+        run: |
+          cd engine
+          H=$(date -u +%H)
+          TYPE="${{ github.event.inputs.type }}"
+          if [ -n "$TYPE" ]; then
+            python3 content_post.py --type "$TYPE"
+          else
+            python3 content_post.py --type price || true
+            if [ "$H" = "08" ] || [ "$H" = "18" ]; then python3 content_post.py --type opps || true; fi
+            if [ "$H" = "09" ]; then python3 content_post.py --type insight || true; fi
+            if [ "$H" = "10" ]; then python3 content_post.py --type tg_price || true; fi
+          fi
+
+      - name: ذخیره‌ی حالت
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: engine/output/content_state.json
+          key: content-state-${{ github.run_id }}

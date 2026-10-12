@@ -1,0 +1,35 @@
+# ✅ تست اتصال — اولین کاری که باید انجام بدهی
+#
+# این ورک‌فلو فقط یک پیام تست می‌فرستد. اگر پیام رسید، مسیر باز است.
+# فقط دستی اجرا می‌شود (خودکار نیست)، تا مزاحم نباشد.
+#
+# پیش‌نیاز: در Settings → Secrets and variables → Actions این‌ها را اضافه کن:
+#   TELEGRAM_BOT_TOKEN و TELEGRAM_CHAT_ID  (برای شروع، همین دو کافی است)
+
+name: "۰ - تست اتصال"
+
+on:
+  workflow_dispatch:        # فقط با کلیک دستی
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: ارسال پیام تست
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          BALE_BOT_TOKEN:     ${{ secrets.BALE_BOT_TOKEN }}
+          BALE_CHAT_ID:       ${{ secrets.BALE_CHAT_ID }}
+          RUBIKA_BOT_TOKEN:   ${{ secrets.RUBIKA_BOT_TOKEN }}
+          RUBIKA_CHAT_ID:     ${{ secrets.RUBIKA_CHAT_ID }}
+          EITAA_BOT_TOKEN:    ${{ secrets.EITAA_BOT_TOKEN }}
+          EITAA_CHAT_ID:      ${{ secrets.EITAA_CHAT_ID }}
+        run: python3 send_test.py

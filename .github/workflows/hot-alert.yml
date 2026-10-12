@@ -1,0 +1,64 @@
+# ⚡ هشدار فوری — هر ۱۵ دقیقه آگهی‌های تازه را چک می‌کند
+#
+# پیش‌نیاز مهم: این ورک‌فلو در هر اجرا ~۲ دقیقه از سهمیه‌ی گیت‌هاب مصرف می‌کند.
+#   ۹۶ اجرا در روز × ۲ دقیقه ≈ ۱۹۰ دقیقه در روز ≈ ۵۸۰۰ دقیقه در ماه
+#   → در ریپوی «خصوصی» سهمیه‌ی رایگان (۲۰۰۰ دقیقه) کافی نیست!
+#   → راه‌حل: ریپو را Public کن (اجرای نامحدود رایگان) یا کمتر کن.
+#   Secrets در ریپوی عمومی هم رمزنگاری‌شده است و لو نمی‌رود (فقط کد را چاپ نکن).
+#
+# اگر ترافیک را از رله‌ی عمومی (r.jina.ai) می‌گیری، این فرکانس سقف را می‌زند
+# → اول رله‌ی شخصی (templates/relay-worker.js روی Cloudflare، رایگان) را بالا بیاور
+#   و آدرسش را در سکرت RELAY_BASE بگذار.
+
+name: هشدار فوری
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"      # هر ۱۵ دقیقه (گیت‌هاب ممکن است ۵-۲۰ دقیقه تأخیر بزند)
+  workflow_dispatch:
+
+concurrency:
+  group: hot-alert
+  cancel-in-progress: false
+
+jobs:
+  hot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # نگه‌داشتن «توکن‌های دیده‌شده» بین اجراها تا آگهی تکراری هشدار ندهد
+      - name: بازیابی حالت
+        uses: actions/cache/restore@v4
+        with:
+          path: engine/output/hot_seen.json
+          key: hot-seen-${{ github.run_id }}
+          restore-keys: hot-seen-
+
+      - name: اسکن آگهی‌های تازه
+        env:
+          RELAY_BASE:         ${{ secrets.RELAY_BASE }}   # رله‌ی شخصی (خالی = رله‌ی عمومی)
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          BALE_BOT_TOKEN:     ${{ secrets.BALE_BOT_TOKEN }}
+          BALE_CHAT_ID:       ${{ secrets.BALE_CHAT_ID }}
+          RUBIKA_BOT_TOKEN:   ${{ secrets.RUBIKA_BOT_TOKEN }}
+          RUBIKA_CHAT_ID:     ${{ secrets.RUBIKA_CHAT_ID }}
+          EITAA_BOT_TOKEN:    ${{ secrets.EITAA_BOT_TOKEN }}
+          EITAA_CHAT_ID:      ${{ secrets.EITAA_CHAT_ID }}
+          RELAY_URL:          ${{ secrets.RELAY_URL }}
+          RELAY_SECRET:       ${{ secrets.RELAY_SECRET }}
+          HOT_MAX_AGE: "90"
+          HOT_MIN_SCORE: "55"
+        run: cd engine && python3 hot_alert.py
+
+      - name: ذخیره‌ی حالت
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: engine/output/hot_seen.json
+          key: hot-seen-${{ github.run_id }}
