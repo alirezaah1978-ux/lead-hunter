@@ -1,0 +1,75 @@
+{
+  "name": "کانال نبض بازار — ۳ پست روزانه (دیسپچ به GitHub)",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [ { "field": "cronExpression", "expression": "30 5 * * *" } ] } },
+      "id": "s1", "name": "۰۹:۰۰ تهران (کارت قیمت)",
+      "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [ 200, 200 ]
+    },
+    {
+      "parameters": { "rule": { "interval": [ { "field": "cronExpression", "expression": "0 10 * * *" } ] } },
+      "id": "s2", "name": "۱۳:۳۰ تهران (فرصت‌ها)",
+      "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [ 200, 400 ]
+    },
+    {
+      "parameters": { "rule": { "interval": [ { "field": "cronExpression", "expression": "30 16 * * *" } ] } },
+      "id": "s3", "name": "۲۰:۰۰ تهران (درس دلالی)",
+      "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [ 200, 600 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/alirezaah1978-ux/lead-hunter/actions/workflows/channel-posts.yml/dispatches",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "Authorization", "value": "token REPLACE_WITH_GITHUB_PAT" },
+          { "name": "Accept", "value": "application/vnd.github+json" }
+        ] },
+        "sendBody": true, "specifyBody": "json",
+        "jsonBody": "{\"ref\":\"main\",\"inputs\":{\"type\":\"price\"}}",
+        "options": {}
+      },
+      "id": "h1", "name": "دیسپچ price",
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [ 480, 200 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/alirezaah1978-ux/lead-hunter/actions/workflows/channel-posts.yml/dispatches",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "Authorization", "value": "token REPLACE_WITH_GITHUB_PAT" },
+          { "name": "Accept", "value": "application/vnd.github+json" }
+        ] },
+        "sendBody": true, "specifyBody": "json",
+        "jsonBody": "{\"ref\":\"main\",\"inputs\":{\"type\":\"opps\"}}",
+        "options": {}
+      },
+      "id": "h2", "name": "دیسپچ opps",
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [ 480, 400 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/repos/alirezaah1978-ux/lead-hunter/actions/workflows/channel-posts.yml/dispatches",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          { "name": "Authorization", "value": "token REPLACE_WITH_GITHUB_PAT" },
+          { "name": "Accept", "value": "application/vnd.github+json" }
+        ] },
+        "sendBody": true, "specifyBody": "json",
+        "jsonBody": "{\"ref\":\"main\",\"inputs\":{\"type\":\"insight\"}}",
+        "options": {}
+      },
+      "id": "h3", "name": "دیسپچ insight",
+      "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [ 480, 600 ]
+    }
+  ],
+  "connections": {
+    "۰۹:۰۰ تهران (کارت قیمت)": { "main": [ [ { "node": "دیسپچ price", "type": "main", "index": 0 } ] ] },
+    "۱۳:۳۰ تهران (فرصت‌ها)": { "main": [ [ { "node": "دیسپچ opps", "type": "main", "index": 0 } ] ] },
+    "۲۰:۰۰ تهران (درس دلالی)": { "main": [ [ { "node": "دیسپچ insight", "type": "main", "index": 0 } ] ] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

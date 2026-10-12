@@ -1,0 +1,70 @@
+# -*- mode: yaml -*-
+# 🧰 استک کامل: n8n (اتوماسیون بصری) + Windmill (کد-اول) + Postgres
+# نسخه‌ی ارجاعی — اسکریپت نصب، فایل را خودش در /opt/stack می‌سازد.
+# اجرا: docker compose up -d      (فقط n8n: docker compose up -d n8n)
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - TZ=Asia/Tehran
+      - GENERIC_TIMEZONE=Asia/Tehran
+      - N8N_SECURE_COOKIE=false
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_RUNNERS_ENABLED=true
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+  db:
+    image: postgres:16
+    container_name: stack-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=rahyaab_change_me
+      - POSTGRES_DB=postgres
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  windmill_server:
+    image: ghcr.io/windmill-labs/windmill:main
+    container_name: windmill-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgres://admin:rahyaab_change_me@db/postgres
+      - MODE=server
+      - BASE_INTERNAL_URL=http://localhost:8000
+    depends_on:
+      db:
+        condition: service_healthy
+      windmill_worker:
+        condition: service_started
+
+  windmill_worker:
+    image: ghcr.io/windmill-labs/windmill:main
+    container_name: windmill-worker
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgres://admin:rahyaab_change_me@db/postgres
+      - MODE=worker
+      - WORKER_GROUP=default
+    shm_size: 1g
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  n8n_data:
+  pg_data:

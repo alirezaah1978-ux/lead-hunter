@@ -1,0 +1,38 @@
+{
+  "name": "رادار دارایی‌ها (tgju) — هشدار نوسان",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [ { "field": "minutes", "minutesInterval": 30 } ] }
+      },
+      "id": "trg-1", "name": "هر ۳۰ دقیقه",
+      "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2,
+      "position": [ 200, 300 ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// دریافت زنده دلار/طلا/سکه از tgju و ساخت متن هشدار (بدون توصیه خرید/فروش)\nconst keys = [['price_dollar_rl','دلار',0.8],['geram18','گرم طلا ۱۸',0.8],['sekeb','سکه امامی',1.0]];\nconst lines = [];\nfor (const [k, fa, th] of keys) {\n  const d = await this.helpers.httpRequest({ url: `https://api.tgju.org/v1/market/indicator/summary-table-data/${k}`, json: true });\n  const row = d.data[0];\n  const pct = parseFloat(String(row[5]).replace(/<[^>]+>/g,'').replace('%',''));\n  const price = parseFloat(String(row[0]).replace(/,/g,'')) / 10;\n  lines.push(`${fa}: ${price.toLocaleString('fa-IR')} ت  (${pct>=0?'▲':'▼'}${pct.toFixed(2)}٪)`);\n  if (Math.abs(pct) >= th) lines.push('');\n}\nconst strong = lines.some(l => l.includes('▲0.') || l.includes('▼0.'));\nreturn [{ json: { text: '📡 رادار دارایی‌ها\\n' + lines.join('\\n') } }];"
+      },
+      "id": "code-1", "name": "خواندن و پردازش",
+      "type": "n8n-nodes-base.code", "typeVersion": 2,
+      "position": [ 440, 300 ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "id": "tg-1", "name": "ارسال به تلگرام",
+      "type": "n8n-nodes-base.telegram", "typeVersion": 1.2,
+      "position": [ 700, 300 ],
+      "credentials": { "telegramApi": { "id": "REPLACE_WITH_YOUR_CREDENTIAL", "name": "Telegram account" } }
+    }
+  ],
+  "connections": {
+    "هر ۳۰ دقیقه": { "main": [ [ { "node": "خواندن و پردازش", "type": "main", "index": 0 } ] ] },
+    "خواندن و پردازش": { "main": [ [ { "node": "ارسال به تلگرام", "type": "main", "index": 0 } ] ] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

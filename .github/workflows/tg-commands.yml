@@ -1,0 +1,47 @@
+# 🎛️ مرکز فرمان تلگرام — «وب‌هوک بدون سرور»
+# هر ۱۰ دقیقه پیام‌های تازه‌ی تو را می‌خواند و به فرمان‌ها جواب می‌دهد.
+# فرمان‌ها: راهنما | وضعیت | رادار | قیمت | فرصت | اسکن | پست
+
+name: مرکز فرمان تلگرام
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tg-commands
+  cancel-in-progress: false
+
+jobs:
+  commands:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: وابستگی‌ها
+        run: pip install -q -r engine/requirements.txt || true
+
+      - name: پردازش فرمان‌های تازه
+        working-directory: engine
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          KANAL_CHAT_ID:      ${{ secrets.KANAL_CHAT_ID }}
+        run: python3 tg_commands.py
+
+      - name: ذخیره‌ی نشانگر پیام‌های خوانده‌شده
+        run: |
+          if [ -f engine/output/tg_seen.json ]; then
+            git config user.name "rahyaab-bot"
+            git config user.email "bot@users.noreply.github.com"
+            git add engine/output/tg_seen.json
+            git diff --staged --quiet || git commit -m "state: tg seen [skip ci]"
+            git push || true
+          fi
