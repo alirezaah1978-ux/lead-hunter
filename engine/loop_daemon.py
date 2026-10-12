@@ -43,13 +43,13 @@ def tick(n):
 def side_jobs(n):
     """کارهای دوره‌ای دیمن: نقشه‌ی شهرها (۲۴ ساعت) + لیست تأمین‌کننده‌ها (۱۲ ساعت)"""
     try:
-        if n["tick"] % 96 == 1:                        # هر ۲۴ ساعت
+        if n["tick"] >= 5 and (n["tick"] - 5) % 96 == 0:      # هر ۲۴ ساعت (اولین‌بار دور ۵)
             log("🗺 شروع تحلیل شهر به شهر (۲۴ ساعتی)")
             import subprocess
             r = subprocess.run([sys.executable, "city_report.py"], cwd=HERE,
                                capture_output=True, text=True, timeout=900)
             log("🗺 گزارش شهر به شهر ارسال شد" if r.returncode == 0 else f"⛔ خطای تحلیل شهرها: {r.stderr[-200:]}")
-        if n["tick"] % 48 == 2:                        # هر ۱۲ ساعت
+        if n["tick"] >= 8 and (n["tick"] - 8) % 48 == 0:      # هر ۱۲ ساعت (اولین‌بار دور ۸)
             import subprocess
             r = subprocess.run([sys.executable, "collect_parts_suppliers.py"], cwd=HERE,
                                capture_output=True, text=True, timeout=900)

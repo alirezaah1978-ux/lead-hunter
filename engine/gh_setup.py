@@ -73,6 +73,8 @@ def _collect():
                 if n.endswith((".pyc",)): continue
                 fp = os.path.join(root, n)
                 rel = os.path.relpath(fp, PROJECT_DIR)
+                if os.path.getsize(fp) > 400_000 and "assets" not in rel:
+                    continue                      # دیتای خام بزرگ لازم نیست در ریپو باشد
                 files.append((rel, fp))
     return files
 
@@ -87,8 +89,8 @@ def push(a):
     subprocess.run(["git", "config", "user.name", "Rahyab Setup"], cwd=PROJECT_DIR, check=True)
     for rel, fp in files:
         subprocess.run(["git", "add", "-f", rel], cwd=PROJECT_DIR, check=True)
-    subprocess.run(["git", "-c", "commit.gpgsign=false", "commit", "-q", "-m",
-                    "راه‌اندازی فرصت‌یاب خودکار (دیوار + تلگرام)"], cwd=PROJECT_DIR, check=True)
+    subprocess.run(["git", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m",
+                    "راه‌اندازی فرصت‌یاب خودکار (دیوار + تلگرام)"], cwd=PROJECT_DIR)
     url = f"https://x-access-token:{a.token}@github.com/{a.repo}.git"
     r = subprocess.run(["git", "push", "-q", "-f", url, "main:main"], cwd=PROJECT_DIR,
                        capture_output=True, text=True)
