@@ -198,7 +198,7 @@ def publish_channel(text, path=None):
         return {"channel": photo_telegram(path, text, chat_id=ch)}
     return {"channel": send_telegram(text, chat_id=ch)}
 
-def broadcast_photo(path, caption, only=None, dry=False, fallback_text=True):
+def broadcast_photo(path, caption, only=None, dry=False, fallback_text=True, relay=False, **kw):
     """تصویر + کپشن به همه‌ی پلتفرم‌های تنظیم‌شده. اگر ارسال تصویر نشد، متن می‌فرستد."""
     targets = only or configured()
     if not targets:

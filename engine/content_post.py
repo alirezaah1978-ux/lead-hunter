@@ -140,7 +140,8 @@ def publish(kind="price", dry=False, relay_url="", relay_secret="", force=False)
     print(f"📤 انتشار محتوا: {kind} {'(همراه تصویر)' if card_path else '(متن)'}")
     if card_path and not dry:
         res = nm.broadcast_photo(card_path, text, relay=bool(relay_url))
-        print("   نتیجه:", res)
+        ok = any((v or {}).get("ok") for v in (res or {}).values()) if isinstance(res, dict) else False
+        print("✅ ارسال شد:" if ok else "   نتیجه:", res)
     elif relay_url and not dry:
         via_relay(text, relay_url, relay_secret)
     else:
