@@ -1,22 +1,22 @@
 {
-  "name": "Divar Floor-Price Hunter (Amin Heydari Post #1620 - min price.json)",
+  "name": "Divar Floor-Price Hunter v3.0 (Brand + City + 14-Day/Ladder Filter)",
   "nodes": [
     {
       "parameters": {
         "updates": ["message"]
       },
       "id": "tg-trigger-floor",
-      "name": "Telegram Trigger (Product + City)",
+      "name": "Telegram Trigger (Product + Brand + City)",
       "type": "n8n-nodes-base.telegramTrigger",
       "typeVersion": 1,
       "position": [220, 300]
     },
     {
       "parameters": {
-        "jsCode": "const raw = ($input.first().json.message?.text || '').replace(/^کف\\s*قیمت\\s*/, '').trim();\nlet query = raw || 'دیسک و صفحه پراید';\nlet city = 'tehran';\nconst cityMap = {'تهران':'tehran','مشهد':'mashhad','اصفهان':'isfahan','شیراز':'shiraz','تبریز':'tabriz','کرج':'karaj','اهواز':'ahvaz','قم':'qom','یزد':'yazd','رشت':'rasht'};\nif (raw.includes(' در ')) {\n  const parts = raw.split(' در ');\n  query = parts[0].trim();\n  const cFa = parts[1].trim();\n  city = cityMap[cFa] || 'tehran';\n}\nreturn [{ json: { query, city, encodedQuery: encodeURIComponent(query) } }];"
+        "jsCode": "const raw = ($input.first().json.message?.text || '').replace(/^کف\\s*قیمت\\s*/, '').trim();\nlet query = raw || 'دیسک و صفحه پراید سکو';\nlet city = 'tehran';\nconst cityMap = {'تهران':'tehran','مشهد':'mashhad','اصفهان':'isfahan','شیراز':'shiraz','تبریز':'tabriz','کرج':'karaj','اهواز':'ahvaz','قم':'qom','یزد':'yazd','رشت':'rasht'};\nif (raw.includes(' در ')) {\n  const parts = raw.split(' در ');\n  query = parts[0].trim();\n  const cFa = parts[1].trim();\n  city = cityMap[cFa] || 'tehran';\n}\nreturn [{ json: { query, city, encodedQuery: encodeURIComponent(query) } }];"
       },
       "id": "parse-input-node",
-      "name": "Parse Product & City",
+      "name": "Parse Product, Brand & City",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [440, 300]
@@ -36,18 +36,18 @@
     },
     {
       "parameters": {
-        "jsCode": "const md = $input.first().json.data || '';\nconst re = /## \\[(.*?)\\]\\((https:\\/\\/divar\\.ir\\/v\\/[^\\)]+)\\)/g;\nconst pDigits = {'۰':'0','۱':'1','۲':'2','۳':'3','۴':'4','۵':'5','۶':'6','۷':'7','۸':'8','۹':'9'};\nconst ads = [];\nlet m;\nwhile ((m = re.exec(md)) !== null) {\n  const clean = m[1].replace(/!\\[Image[^\\]]*\\]\\([^\\)]+\\)/g, '').replace(/\\s+/g, ' ').trim();\n  const pm = clean.match(/([\\d۰-۹,٬]+)\\s*تومان/);\n  if (!pm) continue;\n  const numStr = pm[1].replace(/[۰-۹]/g, d => pDigits[d]).replace(/[^\\d]/g, '');\n  const price = parseInt(numStr || '0', 10);\n  if (price < 50000) continue;\n  const title = clean.slice(0, pm.index).trim();\n  if (/تعمیر|لنت کوبی|مکانیکی|اجرت/.test(title)) continue;\n  ads.push({ title, price, url: m[2] });\n}\nads.sort((a, b) => a.price - b.price);\nconst floor = ads[0]?.price || 0;\nconst trapPrice = Math.max(50000, Math.round((floor * 0.95) / 10000) * 10000);\nreturn [{ json: { count: ads.length, floor_price: floor, amin_trap_price: trapPrice, cheapest: ads.slice(0, 6) } }];"
+        "jsCode": "const md = $input.first().json.data || '';\nconst re = /## \\[(.*?)\\]\\((https:\\/\\/divar\\.ir\\/v\\/[^\\)]+)\\)/g;\nconst pDigits = {'۰':'0','۱':'1','۲':'2','۳':'3','۴':'4','۵':'5','۶':'6','۷':'7','۸':'8','۹':'9'};\nconst ads = [];\nlet m;\nwhile ((m = re.exec(md)) !== null) {\n  const clean = m[1].replace(/!\\[Image[^\\]]*\\]\\([^\\)]+\\)/g, '').replace(/\\s+/g, ' ').trim();\n  const pm = clean.match(/([\\d۰-۹,٬]+)\\s*تومان/);\n  if (!pm) continue;\n  const numStr = pm[1].replace(/[۰-۹]/g, d => pDigits[d]).replace(/[^\\d]/g, '');\n  const price = parseInt(numStr || '0', 10);\n  if (price < 300000) continue;\n  const title = clean.slice(0, pm.index).trim();\n  const meta = clean.slice(pm.index + pm[0].length).replace(/[۰-۹]/g, d => pDigits[d]).trim();\n  if (/تعمیر|لنت کوبی|مکانیکی|اجرت|تراشکاری/.test(title)) continue;\n  const isBoosted = /نردبان|پله|فوری/.test(meta);\n  if (!isBoosted) {\n    if (/ماه پیش|سال پیش|چند هفته/.test(meta)) continue;\n    const wm = meta.match(/(\\d+)\\s*هفته/);\n    if (wm && parseInt(wm[1], 10) > 2) continue;\n    const dm = meta.match(/(\\d+)\\s*روز\\s*پیش/);\n    if (dm && parseInt(dm[1], 10) > 14) continue;\n  }\n  ads.push({ title, price, meta, isBoosted, url: m[2] });\n}\nads.sort((a, b) => a.price - b.price);\nconst floor = ads[0]?.price || 0;\nconst trapPrice = Math.max(100000, Math.round((floor * 0.96) / 10000) * 10000);\nreturn [{ json: { count: ads.length, floor_price: floor, amin_trap_price: trapPrice, cheapest: ads.slice(0, 6) } }];"
       },
       "id": "extract-floor-price",
-      "name": "Calculate Real Floor & Trap Price",
+      "name": "Filter (Brand + <=14d or Ladder/Step) & Calc Floor",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [880, 300]
     },
     {
       "parameters": {
-        "chatId": "={{ $('Telegram Trigger (Product + City)').item.json.message.chat.id }}",
-        "text": "=🐺 کف قیمت واقعی دیوار: {{ $json.floor_price }} تومان\n🎯 قیمت تله‌گذاری امین حیدری: {{ $json.amin_trap_price }} تومان"
+        "chatId": "={{ $('Telegram Trigger (Product + Brand + City)').item.json.message.chat.id }}",
+        "text": "=🐺 کف قیمت واقعی دیوار (حداکثر ۲ هفته یا نردبان/پله): {{ $json.floor_price }} تومان\n🎯 قیمت تله‌گذاری امین حیدری: {{ $json.amin_trap_price }} تومان"
       },
       "id": "tg-send-floor",
       "name": "Send Floor Report to Telegram",
@@ -57,16 +57,16 @@
     }
   ],
   "connections": {
-    "Telegram Trigger (Product + City)": {
-      "main": [[{ "node": "Parse Product & City", "type": "main", "index": 0 }]]
+    "Telegram Trigger (Product + Brand + City)": {
+      "main": [[{ "node": "Parse Product, Brand & City", "type": "main", "index": 0 }]]
     },
-    "Parse Product & City": {
+    "Parse Product, Brand & City": {
       "main": [[{ "node": "Fetch Live Divar Search", "type": "main", "index": 0 }]]
     },
     "Fetch Live Divar Search": {
-      "main": [[{ "node": "Calculate Real Floor & Trap Price", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Filter (Brand + <=14d or Ladder/Step) & Calc Floor", "type": "main", "index": 0 }]]
     },
-    "Calculate Real Floor & Trap Price": {
+    "Filter (Brand + <=14d or Ladder/Step) & Calc Floor": {
       "main": [[{ "node": "Send Floor Report to Telegram", "type": "main", "index": 0 }]]
     }
   }

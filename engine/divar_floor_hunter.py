@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-Divar Brand-Aware Floor-Price Hunter v2.0
-(شکارچی هوشمند کف قیمت دیوار به تفکیک «برند + شهر + نو/استوک + تطابق عنوان/متن» — مدل محمد امین حیدری)
+Divar Brand-Aware & Freshness-Filtered Floor-Price Hunter v3.0 (نسخه نهایی و کامل)
+فیلترهای ۵ لایه‌ای:
+1) تفکیک شهر (۳۸ شهر ایران + حالت چندشهره)
+2) تفکیک برند (۳۰+ برند با تمام املاهای رایج + تفکیک «برند در عنوان» از «برند در متن»)
+3) تفکیک «🆕 نو/اصلی» از «♻️ استوک/در حد نو/کارکرده»
+4) فیلتر زمانی هوشمند: فقط آگهی‌های نهایتاً تا ۲ هفته قبل (۱۴ روز اخیر) پذیرفته می‌شوند، مگر اینکه «نردبان / پله / فوری» خورده باشند!
+5) حذف خودکار آگهی‌های دستمزد/تعمیرگاه و قیمت‌های صوری (۱۰۰ هزار تومانی)
 """
 import re
 import json
@@ -27,7 +32,6 @@ CITY_SLUGS = {
     "ورامین": "varamin", "ری": "rey",
 }
 
-# دیکشنری جامع برندهای لوازم یدکی و املاهای مختلف آن‌ها در دیوار
 BRAND_ALIASES = {
     "سکو (SECO کره)": ["سکو", "سیکو", "seco"],
     "والئو آبی/سبز (Valeo/PHC)": ["والئو آبی", "والئو سبز", "والئو", "ولئو", "والو", "ولوابی", "والوابی", "valeo", "phc"],
@@ -60,7 +64,6 @@ BRAND_ALIASES = {
     "کایابا (KYB)": ["کایابا", "kyb"],
 }
 
-# دسته‌بندی خودکار برندهای پیشنهادی بر اساس نوع قطعه برای جدول مقایسه‌ای
 CATEGORY_BRANDS = {
     "دیسک": ["سکو (SECO کره)", "والئو آبی/سبز (Valeo/PHC)", "عظام (Ezam)", "دایکن (Daikin ژاپن)", "سایپا یدک / شرکتی"],
     "صفحه": ["سکو (SECO کره)", "والئو آبی/سبز (Valeo/PHC)", "عظام (Ezam)", "دایکن (Daikin ژاپن)", "سایپا یدک / شرکتی"],
@@ -96,15 +99,57 @@ def resolve_city(city_name: str) -> tuple[str, str]:
     return "تهران", "tehran"
 
 
+def check_freshness_14d(meta: str) -> tuple[bool, str]:
+    """
+    قانون فیلتر زمانی کاربر:
+    1) اگر آگهی «نردبان شده»، «پله شده» یا «فوری» باشد -> همیشه معتبر و به‌روز است (True).
+    2) اگر تا نهایتاً ۲ هفته پیش (۱۴ روز اخیر) باشد -> معتبر است (True).
+    3) اگر ۳ هفته پیش، ۴ هفته پیش، ماه پیش یا قدیمی‌تر باشد و نردبان/پله نخورده باشد -> فیلتر می‌شود (False).
+    """
+    m_norm = (meta or "").translate(PERSIAN_DIGITS).strip()
+    is_boosted = any(k in m_norm for k in ("نردبان", "پله", "فوری"))
+    if is_boosted:
+        if "پله" in m_norm:
+            return True, "🚀 پله شده"
+        if "فوری" in m_norm:
+            return True, "🔥 فوری"
+        return True, "🚀 نردبان شده"
+
+    # بررسی عبارات قدیمی‌تر از ۲ هفته (وقتی نردبان/پله نخورده‌اند)
+    if any(k in m_norm for k in ("ماه پیش", "سال پیش", "چند هفته پیش")):
+        return False, "⏳ قدیمی (بیش از ۲ هفته)"
+
+    wk_m = re.search(r'(\d+)\s*هفته', m_norm)
+    if wk_m:
+        weeks = int(wk_m.group(1))
+        if weeks > 2:
+            return False, f"⏳ {weeks} هفته پیش (حذف شد)"
+        return True, f"⏱️ {weeks} هفته پیش"
+
+    if "هفتهٔ پیش" in m_norm or "هفته پیش" in m_norm:
+        return True, "⏱️ ۱ هفته پیش"
+
+    day_m = re.search(r'(\d+)\s*روز\s*پیش', m_norm)
+    if day_m:
+        days = int(day_m.group(1))
+        if days > 14:
+            return False, f"⏳ {days} روز پیش (حذف شد)"
+        return True, f"⏱️ {days} روز پیش"
+
+    if "پریروز" in m_norm:
+        return True, "⏱️ پریروز"
+    if "دیروز" in m_norm:
+        return True, "⏱️ دیروز"
+    if any(k in m_norm for k in ("ساعت پیش", "دقایقی پیش", "لحظاتی پیش", "ربع پیش", "امروز")):
+        hr_m = re.search(r'(\d+\s*ساعت\s*پیش)', m_norm)
+        return True, f"⏱️ {hr_m.group(1) if hr_m else 'امروز'}"
+
+    return True, "⏱️ فعال (تا ۲ هفته)"
+
+
 def detect_brand_in_query(query: str) -> tuple[str | None, list[str], str]:
-    """
-    تشخیص می‌دهد آیا کاربر نام برندی را داخل عبارت جست‌وجو آورده است یا خیر.
-    خروجی: (نام رسمی برند، لیست املاهای برند، نام پایه قطعه بدون برند)
-    """
     q_norm = query.strip().lower()
-    # اصلاح تایپ‌های رایج مثل ولوابی -> والئو آبی یا سیکو -> سکو
     for canonical, aliases in BRAND_ALIASES.items():
-        # مرتب‌سازی از طولانی‌ترین املا به کوتاه‌ترین
         for al in sorted(aliases, key=len, reverse=True):
             al_low = al.lower()
             if re.search(rf'(^|\s|‌){re.escape(al_low)}($|\s|‌)', q_norm) or (len(al_low) >= 4 and al_low in q_norm):
@@ -156,7 +201,8 @@ def fetch_city_ads(query: str, city_fa: str = "تهران", brand_aliases: list[
         is_service = any(w in title for w in SERVICE_NOISE_WORDS)
         is_stock = any(w in title for w in USED_STOCK_WORDS)
         is_shop = "فروشگاه" in meta
-        is_promoted = ("نردبان" in meta) or ("پله" in meta)
+        is_promoted = any(k in meta for k in ("نردبان", "پله", "فوری"))
+        is_fresh, freshness_label = check_freshness_14d(meta)
         title_brands = detect_brands_in_title(title)
 
         exact_brand_in_title = False
@@ -175,6 +221,8 @@ def fetch_city_ads(query: str, city_fa: str = "تهران", brand_aliases: list[
             "is_stock": is_stock,
             "is_shop": is_shop,
             "is_promoted": is_promoted,
+            "is_fresh": is_fresh,
+            "freshness_label": freshness_label,
             "title_brands": title_brands,
             "exact_brand_in_title": exact_brand_in_title,
         })
@@ -187,11 +235,9 @@ def scan_single_brand_summary(base_query: str, brand_canonical: str, city_fa: st
     aliases = BRAND_ALIASES.get(brand_canonical, [])
     if not aliases:
         return None
-    # سرچ با املای اصلی برند در دیوار
     q_search = f"{base_query} {aliases[0]}"
     ads = fetch_city_ads(q_search, city_fa=city_fa, brand_aliases=aliases, timeout=18)
-    # اگر برند املای دوم خیلی مهمی دارد (مثل سکو / سیکو یا والئو / ولئو) و تطابق عنوان کم بود، املای دوم را هم ادغام کن
-    if len(aliases) > 1 and sum(1 for a in ads if a["exact_brand_in_title"]) < 3:
+    if len(aliases) > 1 and sum(1 for a in ads if a["exact_brand_in_title"] and a["is_fresh"]) < 3:
         ads2 = fetch_city_ads(f"{base_query} {aliases[1]}", city_fa=city_fa, brand_aliases=aliases, timeout=16)
         seen = {a["url"] for a in ads}
         for a in ads2:
@@ -199,7 +245,9 @@ def scan_single_brand_summary(base_query: str, brand_canonical: str, city_fa: st
                 ads.append(a)
                 seen.add(a["url"])
 
-    valid = [a for a in ads if not a["is_service"]]
+    # فقط آگهی‌های فروش قطعه که یا نهایتاً تا ۲ هفته پیش‌اند یا نردبان/پله شده‌اند
+    valid = [a for a in ads if not a["is_service"] and a["is_fresh"]]
+    stale_removed = sum(1 for a in ads if not a["is_service"] and not a["is_fresh"])
     if not valid:
         return None
 
@@ -207,7 +255,6 @@ def scan_single_brand_summary(base_query: str, brand_canonical: str, city_fa: st
     exact_all = [a for a in valid if a["exact_brand_in_title"]]
     body_new = [a for a in valid if not a["exact_brand_in_title"] and not a["is_stock"]]
 
-    # اولویت ۱: آگهی‌های نو که نام برند صراحتاً در عنوان آگهی آمده است
     primary_pool = exact_new if exact_new else (exact_all if exact_all else (body_new if body_new else valid))
     if len(primary_pool) >= 2:
         raw_m = statistics.median([x["price"] for x in primary_pool])
@@ -228,6 +275,7 @@ def scan_single_brand_summary(base_query: str, brand_canonical: str, city_fa: st
     return {
         "brand": brand_canonical,
         "total_found": len(valid),
+        "stale_removed": stale_removed,
         "exact_title_count": len(exact_all),
         "exact_new_count": len(exact_new),
         "floor_price": floor_p,
@@ -248,7 +296,6 @@ def analyze_floor_price(query: str, city_fa: str = "تهران", multi_city: boo
     else:
         target_cities = [city_label]
 
-    # ۱. اگر کاربر برند خاصی را مشخص کرده باشد (مثلاً «دیسک و صفحه پراید سکو» یا «والئو آبی»)
     all_ads = []
     if brand_canonical:
         search_terms = [f"{base_query} {brand_aliases[0]}"]
@@ -274,10 +321,11 @@ def analyze_floor_price(query: str, city_fa: str = "تهران", multi_city: boo
                 for res_list in ex.map(lambda c: fetch_city_ads(query, c, None, 18), target_cities):
                     all_ads.extend(res_list)
 
-    product_ads = [a for a in all_ads if not a["is_service"]]
     service_ads = [a for a in all_ads if a["is_service"]]
+    stale_ads = [a for a in all_ads if not a["is_service"] and not a["is_fresh"]]
+    # اعمال قانون طلایی: فقط آگهی‌های تا ۲ هفته اخیر یا آگهی‌های نردبان/پله/فوری
+    product_ads = [a for a in all_ads if not a["is_service"] and a["is_fresh"]]
 
-    # اگر برند خواسته شده، اولویت با آگهی‌های نو است که نام برند در عنوانشان هست
     exact_brand_new = [a for a in product_ads if a["exact_brand_in_title"] and not a["is_stock"]]
     exact_brand_all = [a for a in product_ads if a["exact_brand_in_title"]]
     new_product_ads = [a for a in product_ads if not a["is_stock"]]
@@ -289,9 +337,8 @@ def analyze_floor_price(query: str, city_fa: str = "تهران", multi_city: boo
     elif new_product_ads:
         working_pool = new_product_ads
     else:
-        working_pool = product_ads if product_ads else all_ads
+        working_pool = product_ads if product_ads else [a for a in all_ads if not a["is_service"]]
 
-    # حذف پرت‌های غیرواقعی و قیمت‌های صوری (مثلاً ۱۰۰ هزار تومان برای دیسک و صفحه ۱۰ میلیونی)
     if len(working_pool) >= 2:
         raw_med = statistics.median([x["price"] for x in working_pool])
         filt = [x for x in working_pool if x["price"] >= max(300000, raw_med * 0.28)]
@@ -300,7 +347,6 @@ def analyze_floor_price(query: str, city_fa: str = "تهران", multi_city: boo
 
     working_pool.sort(key=lambda x: x["price"])
 
-    # ۲. استخراج خودکار جدول مقایسه‌ای برندها برای همان قطعه در همان شهر
     brand_breakdown = []
     candidate_brands = []
     for kw, b_list in CATEGORY_BRANDS.items():
@@ -328,7 +374,7 @@ def analyze_floor_price(query: str, city_fa: str = "تهران", multi_city: boo
             "brand": brand_canonical,
             "cities": target_cities,
             "brand_breakdown": brand_breakdown,
-            "error": "هیچ آگهی قیمت‌داری در دیوار برای این عبارت پیدا نشد."
+            "error": "هیچ آگهی معتبر و به‌روزی (تا ۲ هفته اخیر یا نردبان/پله‌شده) در دیوار برای این عبارت پیدا نشد."
         }
 
     prices = [x["price"] for x in working_pool]
@@ -342,7 +388,6 @@ def analyze_floor_price(query: str, city_fa: str = "تهران", multi_city: boo
     if trap_price >= floor_price:
         trap_price = max(100000, floor_price - 30000)
 
-    # لیست نمایشی: اول تطابق‌های قطعی عنوان (نو)، بعد تطابق عنوان (استوک)، بعد تطابق متن (بدون قیمت‌های صوری ۱۰۰ هزار تومانی)
     min_valid_p = max(250000, int(median_price * 0.25)) if median_price >= 1000000 else 100000
     if brand_canonical:
         ordered_display = [
@@ -364,6 +409,7 @@ def analyze_floor_price(query: str, city_fa: str = "تهران", multi_city: boo
         "cities": target_cities,
         "total_scanned": len(all_ads),
         "valid_product_ads": len(product_ads),
+        "stale_ads_filtered": len(stale_ads),
         "exact_brand_title_ads": len(exact_brand_all),
         "exact_brand_new_ads": len(exact_brand_new),
         "service_ads_filtered": len(service_ads),
@@ -385,15 +431,20 @@ def format_floor_report_tg(data: dict) -> str:
     q = data["query"]
     brand = data.get("brand")
     cities_str = "، ".join(data["cities"])
-    brand_line = f"🏷️ فیلتر برند: <b>{brand}</b> (تطابق قطعی در عنوان: {data['exact_brand_title_ads']} | نو آکبند: {data['exact_brand_new_ads']})\n" if brand else "🏷️ فیلتر برند: <b>همه برندها + جدول تفکیکی خودکار برندها</b>\n"
+    brand_line = (
+        f"🏷️ فیلتر برند: <b>{brand}</b> (تطابق قطعی در عنوان: {data['exact_brand_title_ads']} | نو آکبند: {data['exact_brand_new_ads']})"
+        if brand else
+        "🏷️ فیلتر برند: <b>همه برندها + جدول تفکیکی خودکار برندها</b>"
+    )
 
     lines = [
-        f"🐺 <b>رادار کف قیمت دیوار به تفکیک برند (سیستم امین حیدری v2.0)</b>",
+        f"🐺 <b>رادار کف قیمت دیوار به تفکیک برند و تاریخ (نسخه نهایی v3.0)</b>",
         f"🔎 جست‌وجو: <b>{q}</b> | 📍 شهر: <b>{cities_str}</b>",
-        brand_line.strip(),
-        f"📊 آگهی‌های بررسی‌شده: <b>{data['total_scanned']}</b> (فروش قطعه: {data['valid_product_ads']} | تعمیرات/اجرت حذف‌شده: {data['service_ads_filtered']})",
+        brand_line,
+        f"⏱️ فیلتر زمان: <b>حداکثر تا ۲ هفته قبل (یا دارای نردبان/پله/فوری)</b>",
+        f"📊 اسکن‌شده: <b>{data['total_scanned']}</b> (معتبر و به‌روز: {data['valid_product_ads']} | قدیمی‌تر از ۲ هفته حذف‌شده: {data.get('stale_ads_filtered',0)} | تعمیرات حذف‌شده: {data['service_ads_filtered']})",
         "",
-        f"🟢 <b>کف قیمت واقعی (نو/اصلی):</b> <code>{data['floor_price']:,}</code> تومان",
+        f"🟢 <b>کف قیمت واقعی (نو/به‌روز):</b> <code>{data['floor_price']:,}</code> تومان",
         f"🟡 <b>میانه قیمت این رده:</b> <code>{data['median_price']:,}</code> تومان",
         f"🔵 <b>میانگین قیمت:</b> <code>{data['avg_price']:,}</code> تومان",
         f"🔴 <b>سقف قیمت:</b> <code>{data['ceiling_price']:,}</code> تومان",
@@ -402,25 +453,25 @@ def format_floor_report_tg(data: dict) -> str:
         f"🔥 <b><code>{data['amin_trap_price']:,} تومان</code></b>",
     ]
 
-    # نمایش جدول مقایسه‌ای تمام برندها
     bb = data.get("brand_breakdown") or []
     if bb:
-        lines.extend(["", f"📊 <b>جدول تفکیکی کف قیمت برندهای «{data['base_query']}» در {cities_str}:</b>"])
+        lines.extend(["", f"📊 <b>جدول تفکیکی کف قیمت برندهای «{data['base_query']}» در {cities_str} (فقط تا ۲ هفته اخیر یا نردبان/پله):</b>"])
         for b_item in bb:
             ex_cnt = b_item["exact_title_count"]
-            match_lbl = f"🎯 {ex_cnt} آگهی با نام برند در عنوان" if ex_cnt > 0 else "📌 ذکرشده در متن"
+            match_lbl = f"🎯 {ex_cnt} در عنوان" if ex_cnt > 0 else "📌 در متن"
             lines.append(
                 f"• <b>{b_item['brand']}:</b> کف <code>{b_item['floor_price']:,}</code> | میانه <code>{b_item['median_price']:,}</code> | تله: <code>{b_item['trap_price']:,}</code> تومان ({match_lbl})"
             )
 
-    lines.extend(["", f"🏆 <b>لیست دقیق آگهی‌های دیوار (به ترتیب قیمت و تطابق برند):</b>"])
+    lines.extend(["", f"🏆 <b>لیست دقیق آگهی‌های به‌روز دیوار (حداکثر ۲ هفته یا نردبان/پله):</b>"])
     for idx, ad in enumerate(data["top_cheapest"][:7], 1):
         badge = "🏪 فروشگاه" if ad["is_shop"] else "👤 شخصی"
         cond = "♻️ استوک/درحد" if ad["is_stock"] else "🆕 نو"
+        fresh_tag = ad.get("freshness_label", "⏱️ به‌روز")
         b_tag = "🎯[برند در عنوان]" if ad.get("exact_brand_in_title") else ("📌[برند در متن]" if brand else "")
         b_detected = f" [{', '.join(ad['title_brands'])}]" if (not brand and ad.get("title_brands")) else ""
         lines.append(
-            f"{idx}. <b>{ad['price']:,} تومان</b> ({cond} | {badge}) {b_tag}{b_detected}\n"
+            f"{idx}. <b>{ad['price']:,} تومان</b> ({cond} | {badge} | {fresh_tag}) {b_tag}{b_detected}\n"
             f"   📝 {ad['title']}\n"
             f"   🔗 <a href=\"{ad['url']}\">مشاهده آگهی در دیوار</a>"
         )
