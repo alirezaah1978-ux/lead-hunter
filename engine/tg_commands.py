@@ -14,16 +14,23 @@ SEEN = os.path.join(OUT, "tg_seen.json")
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 CHAT = str(os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
 
-HELP = """🎛️ <b>مرکز فرمان رهیاب</b>
+HELP = """🎛️ <b>مرکز فرمان رهیاب + LALIGA OMNISCOUT</b>
 کاربر: خودت (دیگران جواب نمی‌گیرند)
-فرمان‌ها:
+
+<b>فرمان‌های فارسی:</b>
 • <b>وضعیت</b> — خلاصه‌ی سیستم و داده‌ها
 • <b>رادار</b> — دلار/طلا/سکه/کریپتو همین لحظه
 • <b>قیمت</b> — پست کارت قیمت فوراً منتشر شود
 • <b>فرصت</b> — پست فرصت‌ها فوراً منتشر شود
 • <b>اسکن</b> — ۳ ساعت اخیر کانال‌های عمده
 • <b>پست</b> — پست درس دلالی منتشر شود
-• <b>راهنما</b> — همین متن"""
+• <b>اسکات</b> — اجرای فوری موتور LALIGA OMNISCOUT
+
+<b>فرمان‌های رسمی LALIGA OMNISCOUT (بخش ۲۲):</b>
+/start | /status | /opportunities | /urgent
+/buyers | /sellers | /matches | /deal
+/sourcehealth | /report | /city | /country
+/category | /pause | /resume"""
 
 def api(method, **params):
     if not TOKEN:
@@ -52,16 +59,33 @@ def sh(args):
         return f"خطا: {type(e).__name__}"
 
 def handle(cmd):
-    if "راهنما" in cmd or cmd.strip() in ("/help", "help", "/start"):
+    c_strip = cmd.strip()
+    c_first = c_strip.split()[0].lower().split("@")[0] if c_strip else ""
+    if c_first in ("/start", "/status", "/opportunities", "/buyers", "/sellers", "/matches",
+                   "/urgent", "/city", "/country", "/category", "/pause", "/resume",
+                   "/report", "/sourcehealth", "/deal"):
+        try:
+            import omniscout
+            ans = omniscout.handle_bot_command(c_strip)
+            if ans:
+                send(ans); return
+        except Exception as e:
+            send(f"⚠ خطای OMNISCOUT: {type(e).__name__}"); return
+    if "اسکات" in cmd or "لالیگا" in cmd or c_first == "/omniscout":
+        out = sh(["omniscout.py", "--send", "--force"]).strip()
+        send("🌐 <b>LALIGA OMNISCOUT</b>\n" + (out[-1000:] or "✅ اجرا شد")); return
+    if "راهنما" in cmd or c_strip in ("/help", "help"):
         send(HELP); return
     if "وضعیت" in cmd:
         try:
-            D = json.load(open(os.path.join(OUT, "real_report.json"), encoding="utf-8"))
+            rp = os.path.join(OUT, "real_report.json")
+            D = json.load(open(rp, encoding="utf-8"))
             st = D.get("stats", {})
             n_sup = sum(1 for _ in open(os.path.join(OUT, "parts_suppliers.csv"), encoding="utf-8-sig")) - 1
+            gen_at = D.get("generated_at") or datetime.fromtimestamp(os.path.getmtime(rp)).strftime("%Y-%m-%d %H:%M")
             send(f"📋 <b>وضعیت سیستم</b>\nآگهی بررسی‌شده: {st.get('unique', '?')}\n"
                  f"فرصت شناسایی‌شده: {st.get('pairs', '?')}\nتأمین‌کننده یدکی: {n_sup}\n"
-                 f"کانال عمده فعال: ۷\nآخرین گزارش: {D.get('generated_at', '?')}")
+                 f"کانال عمده فعال: ۷\nآخرین گزارش: {gen_at}")
         except Exception as e:
             send(f"⚠ خواندن وضعیت نشد ({type(e).__name__})"); return
     elif "رادار" in cmd:

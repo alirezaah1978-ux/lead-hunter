@@ -1,0 +1,67 @@
+{
+  "name": "LALIGA OMNISCOUT — Global Opportunity Discovery & Matching Network",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 3
+            }
+          ]
+        }
+      },
+      "id": "node-schedule",
+      "name": "Every 3 Hours Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "command": "cd /home/user/engine && python3 omniscout.py --send"
+      },
+      "id": "node-exec-omniscout",
+      "name": "Run 14-Agent OmniScout Pipeline",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://r.jina.ai/https://divar.ir/s/tehran",
+        "options": {}
+      },
+      "id": "node-divar-relay",
+      "name": "AGENT 2: Divar SSR Relay",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 500]
+    },
+    {
+      "parameters": {
+        "url": "https://t.me/s/salehabad",
+        "options": {}
+      },
+      "id": "node-tg-scout",
+      "name": "AGENT 3: Telegram Public Scout",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 680]
+    }
+  ],
+  "connections": {
+    "Every 3 Hours Trigger": {
+      "main": [
+        [
+          {
+            "node": "Run 14-Agent OmniScout Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
