@@ -18,6 +18,8 @@ HELP = """🎛️ <b>مرکز فرمان رهیاب + LALIGA OMNISCOUT</b>
 کاربر: خودت (دیگران جواب نمی‌گیرند)
 
 <b>فرمان‌های فارسی:</b>
+• <b>محمد امین هستی</b> — قفل شدن روی مغز و شخصیت محمد امین حیدری 🐺
+• <b>خروج از امین</b> — بازگشت به حالت عادی کارگزار
 • <b>وضعیت</b> — خلاصه‌ی سیستم و داده‌ها
 • <b>رادار</b> — دلار/طلا/سکه/کریپتو همین لحظه
 • <b>قیمت</b> — پست کارت قیمت فوراً منتشر شود
@@ -61,6 +63,18 @@ def sh(args):
 def handle(cmd):
     c_strip = cmd.strip()
     c_first = c_strip.split()[0].lower().split("@")[0] if c_strip else ""
+    try:
+        import amin_brain
+        if any(k in c_strip for k in ("خروج از امین", "حالت عادی")) or c_first in ("/normal", "/exit_amin"):
+            amin_brain.set_amin_mode(False)
+            send("🔄 از حالت محمد امین حیدری خارج شدی و به مرکز فرمان رهیاب برگشتی."); return
+        if "محمد امین هستی" in c_strip or "محمدامین هستی" in c_strip or c_first == "/amin":
+            amin_brain.set_amin_mode(True)
+            send(amin_brain.answer_as_amin(c_strip)); return
+        if c_strip.startswith("امین:") or c_strip.startswith("امین "):
+            send(amin_brain.answer_as_amin(c_strip)); return
+    except Exception as e:
+        print("amin check err:", type(e).__name__)
     if c_first in ("/start", "/status", "/opportunities", "/buyers", "/sellers", "/matches",
                    "/urgent", "/city", "/country", "/category", "/pause", "/resume",
                    "/report", "/sourcehealth", "/deal"):
@@ -105,7 +119,13 @@ def handle(cmd):
         tail = out.strip().splitlines()[-14:]
         send("🔎 <b>اسکن عمده (۳ ساعت)</b>\n<pre>" + "\n".join(tail)[:3300] + "</pre>"); return
     else:
-        send("🤔 نشناختم. بنویس «راهنما».")
+        try:
+            import amin_brain
+            if amin_brain.is_amin_mode():
+                send(amin_brain.answer_as_amin(c_strip)); return
+        except Exception:
+            pass
+        send("🤔 نشناختم. بنویس «راهنما» یا «محمد امین هستی».")
 
 
 def ensure_live_bot():
