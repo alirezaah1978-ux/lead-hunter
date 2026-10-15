@@ -15,6 +15,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "output")
 ARCHIVE_PATH = os.path.join(OUT, "aminheydari_archive.json")
 IG_PATH = os.path.join(OUT, "aminheydari_instagram_full.json")
+VOICE_PATH = os.path.join(OUT, "aminheydari_voice_transcripts.json")
 AMIN_STATE_PATH = os.path.join(OUT, "amin_state.json")
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -75,6 +76,18 @@ def search_archive(query, top_k=3):
     tokens = [t for t in tokens if t not in stop]
     if not tokens:
         tokens = ["دیوار", "فروش", "آگهی"]
+
+    # ۰. جست‌وجو در متن پیاده‌شده‌ی ویس‌ها و پادکست‌های صوتی (72,651 کاراکتر صدای واقعی)
+    if os.path.exists(VOICE_PATH):
+        try:
+            v_list = json.load(open(VOICE_PATH, encoding="utf-8"))
+            for v in v_list:
+                tr = (v.get("transcript") or "") + " " + (v.get("caption") or "")
+                sc = sum(14 + min(tr.count(tk) * 2, 8) for tk in tokens if tk in tr)
+                if sc > 0:
+                    results.append((sc + 8, f"🎙️ [متن داخل ویس #{v['id']} | {int(v.get('duration_sec',0))} ثانیه]", v.get("transcript") or ""))
+        except Exception:
+            pass
 
     # ۱. جست‌وجو در پست‌های اینستاگرام
     if os.path.exists(IG_PATH):
@@ -217,7 +230,7 @@ def answer_as_amin(user_text):
         )
 
     return (
-        "🐺 <b>محمد امین حیدری هستم (بازاریاب نسل ۴ | مافیای دیوار):</b>\n\n"
+        "🐺 <b>سلام سلام سلام! عرض ادب و احترام دارم خدمت شما دوست عزیزم، حیدری هستم؛ خیلی خوشحالم از اینکه فرد بادانش و باشعوری مثل شما بنده رو دنبال می‌کنه 🫡❤️</b>\n\n"
         + "\n\n".join(blocks)
         + refs_str
         + "\n\n❤️ <i>کلمه یا موضوع بعدیت رو بگو تا بترکونیمش! 🫡👇🏻</i>"
