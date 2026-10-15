@@ -209,6 +209,11 @@ def scan_single_brand_summary(base_query: str, brand_canonical: str, city_fa: st
 
     # اولویت ۱: آگهی‌های نو که نام برند صراحتاً در عنوان آگهی آمده است
     primary_pool = exact_new if exact_new else (exact_all if exact_all else (body_new if body_new else valid))
+    if len(primary_pool) >= 2:
+        raw_m = statistics.median([x["price"] for x in primary_pool])
+        cleaned = [x for x in primary_pool if x["price"] >= max(300000, raw_m * 0.28)]
+        if cleaned:
+            primary_pool = cleaned
     primary_pool.sort(key=lambda x: x["price"])
     prices = [x["price"] for x in primary_pool]
 
@@ -286,11 +291,11 @@ def analyze_floor_price(query: str, city_fa: str = "تهران", multi_city: boo
     else:
         working_pool = product_ads if product_ads else all_ads
 
-    # حذف پرت‌های غیرواقعی
-    if len(working_pool) >= 5 and not brand_canonical:
+    # حذف پرت‌های غیرواقعی و قیمت‌های صوری (مثلاً ۱۰۰ هزار تومان برای دیسک و صفحه ۱۰ میلیونی)
+    if len(working_pool) >= 2:
         raw_med = statistics.median([x["price"] for x in working_pool])
-        filt = [x for x in working_pool if x["price"] >= raw_med * 0.30]
-        if len(filt) >= 2:
+        filt = [x for x in working_pool if x["price"] >= max(300000, raw_med * 0.28)]
+        if filt:
             working_pool = filt
 
     working_pool.sort(key=lambda x: x["price"])
@@ -337,13 +342,17 @@ def analyze_floor_price(query: str, city_fa: str = "تهران", multi_city: boo
     if trap_price >= floor_price:
         trap_price = max(100000, floor_price - 30000)
 
-    # لیست نمایشی: اول تطابق‌های قطعی عنوان (نو)، بعد تطابق عنوان (استوک)، بعد تطابق متن
+    # لیست نمایشی: اول تطابق‌های قطعی عنوان (نو)، بعد تطابق عنوان (استوک)، بعد تطابق متن (بدون قیمت‌های صوری ۱۰۰ هزار تومانی)
+    min_valid_p = max(250000, int(median_price * 0.25)) if median_price >= 1000000 else 100000
     if brand_canonical:
-        ordered_display = (
-            sorted(exact_brand_new, key=lambda x: x["price"])
-            + sorted([a for a in exact_brand_all if a["is_stock"]], key=lambda x: x["price"])
-            + sorted([a for a in product_ads if not a["exact_brand_in_title"]], key=lambda x: x["price"])
-        )
+        ordered_display = [
+            a for a in (
+                sorted(exact_brand_new, key=lambda x: x["price"])
+                + sorted([a for a in exact_brand_all if a["is_stock"]], key=lambda x: x["price"])
+                + sorted([a for a in product_ads if not a["exact_brand_in_title"]], key=lambda x: x["price"])
+            )
+            if a["price"] >= min_valid_p
+        ]
     else:
         ordered_display = working_pool
 
