@@ -184,6 +184,22 @@ def answer_as_amin(user_text):
             "4️⃣ <b>هر سؤال درباره محصول، آمار آگهی، قیمت‌گذاری یا استراتژی بازار</b> ← تصمیم‌گیری ۱۰۰٪ با مغز امین حیدری ❤️👇🏻"
         )
 
+    if "کف قیمت" in q_clean or q_clean.startswith("/floor"):
+        try:
+            import divar_floor_hunter as dfh
+            body = re.sub(r"^(کف\s*قیمت|/floor)\s*", "", q_clean).strip()
+            city_fa = "تهران"
+            multi = False
+            if " در " in body:
+                parts = body.rsplit(" در ", 1)
+                body, city_fa = parts[0].strip(), parts[1].strip()
+            if city_fa in ("همه", "کل ایران", "ایران", "چند شهر"):
+                multi = True
+            res = dfh.analyze_floor_price(body or "دیسک و صفحه پراید", city_fa=city_fa, multi_city=multi)
+            return dfh.format_floor_report_tg(res)
+        except Exception as e:
+            return f"⚠️ خطا در استخراج کف قیمت دیوار: {type(e).__name__}"
+
     matched = search_archive(q_clean, top_k=3)
     refs_str = ""
     if matched:

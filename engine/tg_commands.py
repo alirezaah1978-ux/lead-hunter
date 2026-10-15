@@ -102,6 +102,22 @@ def handle(cmd):
                  f"کانال عمده فعال: ۷\nآخرین گزارش: {gen_at}")
         except Exception as e:
             send(f"⚠ خواندن وضعیت نشد ({type(e).__name__})"); return
+    elif "کف قیمت" in c_strip or c_first == "/floor":
+        try:
+            import divar_floor_hunter as dfh
+            body = re.sub(r"^(کف\s*قیمت|/floor)\s*", "", c_strip).strip()
+            city_fa = "تهران"
+            multi = False
+            if " در " in body:
+                parts = body.rsplit(" در ", 1)
+                body, city_fa = parts[0].strip(), parts[1].strip()
+            if city_fa in ("همه", "کل ایران", "ایران", "چند شهر"):
+                multi = True
+            q = body or "دیسک و صفحه پراید"
+            res = dfh.analyze_floor_price(q, city_fa=city_fa, multi_city=multi)
+            send(dfh.format_floor_report_tg(res)); return
+        except Exception as e:
+            send(f"⚠ خطا در استخراج کف قیمت دیوار: {type(e).__name__}"); return
     elif "رادار" in cmd:
         out = sh(["radar.py"]).strip()
         send("📡 <b>رادار</b>\n<pre>" + out[:3300] + "</pre>"); return
