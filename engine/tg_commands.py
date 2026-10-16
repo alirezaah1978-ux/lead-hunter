@@ -110,6 +110,13 @@ def handle(cmd):
             send(dam.format_telegram_diaspora_report())
         except Exception as e:
             send(f"⚠ خطا در اجرای رادار خارج از کشور: {type(e).__name__}: {e}"); return
+    elif any(k in c_strip for k in ("سناریو", "کپی رایتینگ", "کپی‌رایتینگ", "تبلیغ نویسی", "معدن پنهان")) or c_first in ("/copy", "/gems"):
+        try:
+            import copywriting_and_hidden_gems_hunter as chg
+            send("⏳ در حال اسکن زنده ۱۳ کانال ایران و خارج برای شکار پروژه‌های سناریونویسی، کپی‌رایتینگ و ۷ معدن پنهان...")
+            send(chg.format_telegram_copywriting_report())
+        except Exception as e:
+            send(f"⚠ خطا در اجرای رادار سناریو و معدن پنهان: {type(e).__name__}: {e}"); return
     elif "کف قیمت" in c_strip or c_first == "/floor":
         try:
             import divar_floor_hunter as dfh
