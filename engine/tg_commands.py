@@ -27,6 +27,7 @@ HELP = """🎛️ <b>مرکز فرمان رهیاب + LALIGA OMNISCOUT</b>
 • <b>اسکن</b> — ۳ ساعت اخیر کانال‌های عمده
 • <b>پست</b> — پست درس دلالی منتشر شود
 • <b>اسکات</b> — اجرای فوری موتور LALIGA OMNISCOUT
+• <b>دیوار خارج</b> (یا <b>شکار خارج</b> / <b>مکلر</b>) — اجرای زنده رادار ۳گانه دیوارهای تلگرامی ایرانیان خارج (مکلر مسکن + استودیو دیجیتال + رزومه آلمان) 🌍
 
 <b>فرمان‌های رسمی LALIGA OMNISCOUT (بخش ۲۲):</b>
 /start | /status | /opportunities | /urgent
@@ -102,6 +103,13 @@ def handle(cmd):
                  f"کانال عمده فعال: ۷\nآخرین گزارش: {gen_at}")
         except Exception as e:
             send(f"⚠ خواندن وضعیت نشد ({type(e).__name__})"); return
+    elif any(k in c_strip for k in ("دیوار خارج", "شکار خارج", "مکلر", "رزومه آلمان")) or c_first in ("/diaspora", "/makler"):
+        try:
+            import diaspora_ai_matchmaker as dam
+            send("⏳ در حال اسکن زنده ۱۰ کانال دیوار تلگرامی ایرانیان خارج از کشور (آلمان، انگلیس، کانادا، عمان، امارات، ترکیه)...")
+            send(dam.format_telegram_diaspora_report())
+        except Exception as e:
+            send(f"⚠ خطا در اجرای رادار خارج از کشور: {type(e).__name__}: {e}"); return
     elif "کف قیمت" in c_strip or c_first == "/floor":
         try:
             import divar_floor_hunter as dfh

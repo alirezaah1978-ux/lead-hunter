@@ -1,0 +1,66 @@
+{
+  "name": "رادار شکارچی دیوارهای تلگرامی ایرانیان خارج از کشور (v1.2)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "schedule-diaspora",
+      "name": "هر ۲ ساعت یک‌بار",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const channels = [\n  {handle: 'Akfon_DE', country: '🇩🇪 آلمان'},\n  {handle: 'Hamburgdd', country: '🇩🇪 هامبورگ'},\n  {handle: 'DivarFarsiHamburg', country: '🇩🇪 هامبورگ ۲'},\n  {handle: 'DIWAR_ALMAN', country: '🇩🇪 دیوار آلمان'},\n  {handle: 'Berlinetelat2', country: '🇩🇪 برلین'},\n  {handle: 'Niaz4uk', country: '🇬🇧 لندن'},\n  {handle: 'divar_estanbul', country: '🇹🇷 استانبول'},\n  {handle: 'walcad', country: '🇨🇦 ونکوور'},\n  {handle: 'omanex', country: '🇴🇲 عمان'},\n  {handle: 'iranian_uae', country: '🇦🇪 دبی'}\n];\nreturn channels.map(c => ({json: c}));"
+      },
+      "id": "list-channels",
+      "name": "لیست ۱۰ دیوار تلگرامی خارج",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://t.me/s/{{ $json.handle }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "fetch-tg-web",
+      "name": "دریافت آگهی‌های زنده تلگرام",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.first().json.data || '';\nconst handle = $('لیست ۱۰ دیوار تلگرامی خارج').item.json.handle;\nconst country = $('لیست ۱۰ دیوار تلگرامی خارج').item.json.country;\n\nconst filters = {\n  digital: ['موشن دیزاینر', 'طراحی سایت', 'گرافیک', 'ادمین', 'فروش بین‌الملل', 'تدریس', 'آموزش زبان', 'آیلتس', 'bewerbung', 'ausbildung', 'رزومه', 'روانشناس', 'مشاوره', 'تراپی', 'سئو', 'فال قهوه'],\n  housing_makler: ['مکلر', 'makler', 'دنبال خونه', 'نیازمند خانه', 'اجاره گرم', 'وارم میته', 'ملد', 'anmeldung', 'هم اتاقی', 'هم‌خانه'],\n  luggage_cargo: ['بار مجاز', 'قبول مدارک', 'کیلو', 'مسافر', 'قبول دارو', 'پرواز تهران', 'فریت بار', 'زعفران', 'صنایع دستی'],\n  legal_exchange: ['وکیل', 'وکالت', 'ثبت شرکت', 'وام شخصی', 'سرمایه گذار', 'حواله', 'صرافی', 'ریال عمان']\n};\n\nconst regex = /<div class=\"tgme_widget_message_text[^>]*>([\\s\\S]*?)<\\/div>/g;\nlet m;\nconst hits = [];\nwhile ((m = regex.exec(html)) !== null) {\n  const text = m[1].replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\n  const low = text.toLowerCase();\n  for (const [cat, kws] of Object.entries(filters)) {\n    if (kws.some(k => low.includes(k))) {\n      const contacts = text.match(/@[A-Za-z0-9_]{4,}|\\+?\\d[\\d\\s\\-]{8,14}\\d/g) || [];\n      hits.push({json: {country, handle, category: cat, text: text.slice(0, 260), contacts: contacts.slice(0, 3)}});\n      break;\n    }\n  }\n}\nreturn hits.slice(0, 10);"
+      },
+      "id": "filter-diaspora-ads",
+      "name": "اعمال ۵ فیلتر شکار دلاری/یورویی",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 300]
+    }
+  ],
+  "connections": {
+    "هر ۲ ساعت یک‌بار": {
+      "main": [[{"node": "لیست ۱۰ دیوار تلگرامی خارج", "type": "main", "index": 0}]]
+    },
+    "لیست ۱۰ دیوار تلگرامی خارج": {
+      "main": [[{"node": "دریافت آگهی‌های زنده تلگرام", "type": "main", "index": 0}]]
+    },
+    "دریافت آگهی‌های زنده تلگرام": {
+      "main": [[{"node": "اعمال ۵ فیلتر شکار دلاری/یورویی", "type": "main", "index": 0}]]
+    }
+  }
+}
